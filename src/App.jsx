@@ -100,7 +100,7 @@ const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
 const DOUBAO_IMAGE_MODEL = "ep-20260509185423-hmwqk"; 
 
 // 🔴 必改项：此处必须填入豆包的【文本对话模型】 Endpoint ID
-const DOUBAO_TEXT_MODEL = "ep-20260509194654-r9g6m"; // <-- 记得改这里！
+const DOUBAO_TEXT_MODEL = "ep-xxxxxxxx-xxxxx"; // <-- 记得改这里！
 
 
 // ==========================================
@@ -471,10 +471,24 @@ export default function BrainstormApp() {
     setInputValue('');
     setIsInputCenter(false);
     setError(null);
-    setNodes([]);
+    
+    // Determine position for the new root node
+    let newX = 0;
+    let newY = 0;
+
+    if (nodes.length > 0) {
+      // If canvas already has nodes, place the new root at the center of the current viewport
+      // Add a slight random offset to prevent exact overlapping if user submits multiple without moving
+      const centerX = (window.innerWidth / 2 - transform.x) / transform.scale;
+      const centerY = (window.innerHeight / 2 - transform.y) / transform.scale;
+      newX = centerX + (Math.random() * 80 - 40);
+      newY = centerY + (Math.random() * 80 - 40);
+    } else {
+      setNodes([]); // Safe reset for the very first node
+    }
     
     const rootId = `node-${Date.now()}`;
-    addNode(rootId, rootWord, "Root Concept", 0, 0, null, true);
+    addNode(rootId, rootWord, "Root Concept", newX, newY, null, true);
     await expandNode(rootId, rootWord);
   };
 
@@ -540,9 +554,10 @@ export default function BrainstormApp() {
 
   const handleGenerateIdea = async () => {
     const selectedWords = nodes.filter(n => n.isSelected).map(n => n.text);
-    const rootWord = nodes.find(n => n.isRoot)?.text;
-    if (selectedWords.length === 0 && !rootWord) return;
-    const wordsToUse = selectedWords.length > 0 ? selectedWords : [rootWord];
+    // Support multiple root words if nothing is selected
+    const rootWords = nodes.filter(n => n.isRoot).map(n => n.text);
+    if (selectedWords.length === 0 && rootWords.length === 0) return;
+    const wordsToUse = selectedWords.length > 0 ? selectedWords : rootWords;
     
     setIsIdeaModalOpen(true);
     setIsGenerating(true);
