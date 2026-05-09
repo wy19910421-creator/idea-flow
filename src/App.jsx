@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Sparkles, Download, Trash2, History, X, Loader2, Maximize, MousePointer2, Zap, Image as ImageIcon, Compass, Newspaper, Quote, Copy, Check, AlertCircle } from 'lucide-react';
 
 // ==========================================
-// 🌌 二进制树画布动画组件（完全保留）
+// 🌌 二进制树画布动画组件
 // ==========================================
 const BinaryTreeCanvas = () => {
   const canvasRef = useRef(null);
@@ -55,11 +55,9 @@ const BinaryTreeCanvas = () => {
 
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
       ctx.font = '12px monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      
       ctx.shadowBlur = 10;
       ctx.shadowColor = '#34d399';
 
@@ -76,7 +74,6 @@ const BinaryTreeCanvas = () => {
           ctx.fillText(p.char, p.x, p.y);
         }
       }
-
       animationFrameId = requestAnimationFrame(draw);
     };
 
@@ -94,18 +91,19 @@ const BinaryTreeCanvas = () => {
 };
 
 // ==========================================
-// 🚀 火山引擎豆包API配置
+// 🚀 火山引擎豆包 API 配置
 // ==========================================
-// 重要更新：这里改成了相对路径，依托 vite.config / vercel.json 的代理来绕过跨域限制！
-const DOUBAO_API_URL = "/api/v3";
+// 完美绕过 Vercel 405 拦截的改名版通道！
+const DOUBAO_API_URL = "/doubao-api";
 
+// 👇 请确保这是你真实的 API KEY
 const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
 
 // 🔴 必改项：此处必须填入豆包的【文生图模型】 Endpoint ID
-const DOUBAO_IMAGE_MODEL = "ep-20260509185423-hmwqk"; // <-- 请替换为真实的图像模型ID
+const DOUBAO_IMAGE_MODEL = "ep-20260509185423-hmwqk"; // 如果你确定这个是绘图模型，就保留
 
-// 🔴 必改项：此处必须填入豆包的【文本对话模型】 Endpoint ID (不能和上面一样!)
-const DOUBAO_TEXT_MODEL = "ep-20260509194654-r9g6m"; // <-- 请替换为真实的文本模型ID
+// 🔴 必改项：此处必须填入豆包的【文本对话模型】 Endpoint ID
+const DOUBAO_TEXT_MODEL = "ep-20260509194654-r9g6m"; // <-- 请去火山引擎再看一眼，填入真实的“对话文本”模型ID（不能和上面的画图ID一模一样！）
 
 
 // ==========================================
@@ -121,9 +119,9 @@ const cache = {
 };
 
 // ==========================================
-// 🤖 统一的豆包API调用函数（带精准报错提示）
+// 🤖 统一的豆包API调用函数
 // ==========================================
-const callDoubaoAPI = async (endpoint, payload, timeout = 25000) => {
+const callDoubaoAPI = async (endpoint, payload, timeout = 30000) => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -141,28 +139,25 @@ const callDoubaoAPI = async (endpoint, payload, timeout = 25000) => {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      // 深度解析豆包抛出的报错信息，直接展示给用户
       const errorText = await response.text();
-      let errorMsg = `API请求被拒绝 (状态码: ${response.status})`;
+      let errorMsg = `API被拒绝 (状态码: ${response.status})`;
       try {
         const errorJson = JSON.parse(errorText);
-        if (errorJson.error?.message) errorMsg = `豆包API报错: ${errorJson.error.message}`;
+        if (errorJson.error?.message) errorMsg = `豆包报错: ${errorJson.error.message}`;
       } catch (e) {}
       throw new Error(errorMsg);
     }
 
     return await response.json();
   } catch (error) {
-    if (error.name === 'AbortError') {
-      throw new Error("请求超时，请检查网络后重试");
-    }
+    if (error.name === 'AbortError') throw new Error("请求超时，请检查网络后重试");
     console.error("网络请求底层错误:", error);
     throw error;
   }
 };
 
 // ==========================================
-// 🧠 AI功能实现
+// 🧠 AI 功能实现
 // ==========================================
 const generateRelatedWords = async (word) => {
   if (cache.relatedWords.has(word)) return cache.relatedWords.get(word);
@@ -181,13 +176,9 @@ const generateRelatedWords = async (word) => {
   try {
     const result = await callDoubaoAPI("/chat/completions", payload);
     let jsonStr = result.choices[0].message.content;
-    
-    // 强制清洗 AI 有时错误添加的 Markdown 标记
     jsonStr = jsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
     
     const data = JSON.parse(jsonStr);
-    
-    // 兼容部分 AI 可能把数组包在一个 object 里返回的情况
     const arrayData = Array.isArray(data) ? data : (data.words || data.result || Object.values(data)[0]);
     
     if (!Array.isArray(arrayData) || arrayData.length === 0) {
@@ -198,7 +189,7 @@ const generateRelatedWords = async (word) => {
     return arrayData;
   } catch (error) {
     console.error("解析或生成错误:", error);
-    throw error; // 将错误向上抛出给组件捕获
+    throw error;
   }
 };
 
@@ -242,7 +233,7 @@ const generateConceptImage = async (promptText) => {
   try {
     const result = await callDoubaoAPI("/images/generations", {
       model: DOUBAO_IMAGE_MODEL,
-      prompt: promptText.substring(0, 200), // 截断过长提示词
+      prompt: promptText.substring(0, 200),
       size: "1024x1024", 
       response_format: "url",
       n: 1,
@@ -425,11 +416,8 @@ export default function BrainstormApp() {
   const [nodes, setNodes] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isInputCenter, setIsInputCenter] = useState(true);
-  
-  // 新增的顶部错误提示状态
   const [error, setError] = useState(null);
 
-  // 模态框状态
   const [isIdeaModalOpen, setIsIdeaModalOpen] = useState(false);
   const [generatedIdea, setGeneratedIdea] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -443,15 +431,11 @@ export default function BrainstormApp() {
   const [detailData, setDetailData] = useState({ word: '', prompt: '', image: null, newsText: '', newsSources: [] });
   const [isPromptCopied, setIsPromptCopied] = useState(false);
 
-  // 输入框自动聚焦
   const inputRef = useRef(null);
   useEffect(() => {
-    if (isInputCenter && inputRef.current) {
-      inputRef.current.focus();
-    }
+    if (isInputCenter && inputRef.current) inputRef.current.focus();
   }, [isInputCenter]);
 
-  // 画布居中
   useEffect(() => {
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
@@ -459,7 +443,6 @@ export default function BrainstormApp() {
     }
   }, []);
 
-  // 错误提示自动消失
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => setError(null), 8000);
@@ -467,11 +450,8 @@ export default function BrainstormApp() {
     }
   }, [error]);
 
-  // 预加载下一层节点（鼠标悬停时触发）
   const preloadRelatedWords = useCallback((word) => {
-    if (!cache.relatedWords.has(word)) {
-      generateRelatedWords(word).catch(() => {});
-    }
+    if (!cache.relatedWords.has(word)) generateRelatedWords(word).catch(() => {});
   }, []);
 
   const addNode = (id, text, en, x, y, parentId = null, isRoot = false) => {
@@ -492,7 +472,6 @@ export default function BrainstormApp() {
     setInputValue('');
     setIsInputCenter(false);
     setError(null);
-    
     setNodes([]);
     
     const rootId = `node-${Date.now()}`;
@@ -504,7 +483,6 @@ export default function BrainstormApp() {
     setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, isLoading: true } : n));
     try {
       const relatedData = await generateRelatedWords(word);
-      
       setNodes(prev => {
         const currentNodes = [...prev];
         const parentIndex = currentNodes.findIndex(n => n.id === nodeId);
@@ -558,9 +536,7 @@ export default function BrainstormApp() {
   };
 
   const handleNodeClick = (id, text, isExpanded) => {
-    if (!isExpanded) {
-      expandNode(id, text);
-    }
+    if (!isExpanded) expandNode(id, text);
   };
 
   const handleGenerateIdea = async () => {
@@ -618,13 +594,11 @@ export default function BrainstormApp() {
     setError(null);
 
     try {
-      // 并行生成提示词和资讯（这两个速度快）
       const [imgPrompt, newsResult] = await Promise.all([
         generateImagePrompt(targetWord),
         fetchKeywordNews(targetWord)
       ]);
 
-      // 立即显示文本内容，让用户可以开始阅读
       setDetailData(prev => ({ 
         ...prev, 
         prompt: imgPrompt, 
@@ -633,7 +607,6 @@ export default function BrainstormApp() {
       }));
       setIsGeneratingDetail(false); 
 
-      // 异步请求加载图片（不阻塞文本显示）
       const match = imgPrompt.match(/<english_prompt>([\s\S]*?)<\/english_prompt>/i);
       const drawingPrompt = match ? match[1].trim() : imgPrompt.substring(0, 200);
       
@@ -656,8 +629,7 @@ export default function BrainstormApp() {
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-[#160B2A] text-white selection:bg-emerald-500/30">
-      
-      {/* 🔴 全局错误提示横幅 - 一旦出错能立马在这里看到具体原因 */}
+      {/* 🔴 全局错误提示横幅 */}
       {error && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-6 py-4 bg-red-500/90 backdrop-blur-md border border-red-400/50 rounded-full shadow-[0_0_40px_rgba(239,68,68,0.5)] transition-all animate-[bounce_0.5s_ease-out]">
           <AlertCircle size={20} className="text-white" />
@@ -668,86 +640,42 @@ export default function BrainstormApp() {
         </div>
       )}
       
-      {/* 深紫色背景 */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#2a164b] via-[#160b2a] to-[#0f071e] pointer-events-none -z-10" />
       
-      {/* 动态二进制树背景 */}
-      <div 
-        className={`absolute inset-0 transition-opacity duration-1000 ease-in-out pointer-events-none z-0
-          ${isInputCenter ? 'opacity-100' : 'opacity-0'}`}
-      >
+      <div className={`absolute inset-0 transition-opacity duration-1000 ease-in-out pointer-events-none z-0 ${isInputCenter ? 'opacity-100' : 'opacity-0'}`}>
         <BinaryTreeCanvas />
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-emerald-500/10 blur-[120px] rounded-full" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-amber-500/10 blur-[120px] rounded-full" />
       </div>
 
-      {/* 主画布区域 */}
-      <div
-        id="canvas-bg"
-        ref={containerRef}
-        className="absolute inset-0 cursor-grab active:cursor-grabbing z-10"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onWheel={onWheel}
-      >
-        <div
-          style={{
-            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-            transformOrigin: '0 0',
-            transition: isDragging.current ? 'none' : 'transform 0.1s ease-out'
-          }}
-          className="absolute top-0 left-0"
-        >
-          {/* 连接线 */}
+      <div id="canvas-bg" ref={containerRef} className="absolute inset-0 cursor-grab active:cursor-grabbing z-10" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onWheel={onWheel}>
+        <div style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0', transition: isDragging.current ? 'none' : 'transform 0.1s ease-out' }} className="absolute top-0 left-0">
           <svg className="absolute top-0 left-0 overflow-visible pointer-events-none">
             {activeLinks.map((link, i) => {
               const source = nodes.find(n => n.id === link.source);
               const target = nodes.find(n => n.id === link.target);
               if (!source || !target) return null;
-              
               return (
                 <g key={`${link.source}-${link.target}`}>
-                  <line
-                    x1={source.x} y1={source.y} x2={target.x} y2={target.y}
-                    stroke={target.isSelected ? "rgba(245, 158, 11, 0.4)" : "rgba(255, 255, 255, 0.15)"}
-                    strokeWidth={target.isSelected ? 3 : 1.5}
-                    className="transition-all duration-500 ease-out"
-                  />
-                  {source.isLoading && (
-                    <line
-                      x1={source.x} y1={source.y} x2={target.x} y2={target.y}
-                      stroke="rgba(16, 185, 129, 0.5)" strokeWidth="2" strokeDasharray="4 8"
-                      className="animate-[dash_1s_linear_infinite]"
-                    />
-                  )}
+                  <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={target.isSelected ? "rgba(245, 158, 11, 0.4)" : "rgba(255, 255, 255, 0.15)"} strokeWidth={target.isSelected ? 3 : 1.5} className="transition-all duration-500 ease-out" />
+                  {source.isLoading && <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke="rgba(16, 185, 129, 0.5)" strokeWidth="2" strokeDasharray="4 8" className="animate-[dash_1s_linear_infinite]" />}
                 </g>
               );
             })}
           </svg>
-
-          {/* 节点 */}
           {nodes.map(node => (
-            <Node
-              key={node.id}
-              node={node}
-              onClick={() => handleNodeClick(node.id, node.text, node.isExpanded)}
-              onRightClick={(e) => { e.preventDefault(); toggleSelectNode(node.id); }}
-              onPreload={preloadRelatedWords}
-            />
+            <Node key={node.id} node={node} onClick={() => handleNodeClick(node.id, node.text, node.isExpanded)} onRightClick={(e) => { e.preventDefault(); toggleSelectNode(node.id); }} onPreload={preloadRelatedWords} />
           ))}
         </div>
       </div>
 
-      {/* 顶部导航 */}
       <div className="absolute top-0 w-full p-6 flex justify-between items-start pointer-events-none z-20">
         <div></div>
         <div className="flex gap-3 pointer-events-auto">
           <button onClick={clearCanvas} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/10 rounded-full text-sm font-medium transition-all text-white/80 hover:text-white">
             <Trash2 size={16} /> <span className="hidden sm:inline">清空画布</span>
           </button>
-          <button onClick={handleConfirmExplore} disabled={nodes.filter(n => n.isSelected).length !== 1} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-indigo-500 hover:to-blue-400 text-white shadow-lg shadow-blue-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed" title="请选中且仅选中一个词语进行具象化探索">
+          <button onClick={handleConfirmExplore} disabled={nodes.filter(n => n.isSelected).length !== 1} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-indigo-500 hover:to-blue-400 text-white shadow-lg shadow-blue-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed">
             <Compass size={16} /> <span className="hidden sm:inline">确定发掘</span>
           </button>
           <button onClick={handleGenerateInsight} disabled={nodes.filter(n => n.isSelected).length < 2} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-400 hover:from-orange-400 hover:to-amber-300 text-white shadow-lg shadow-amber-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed">
@@ -759,52 +687,22 @@ export default function BrainstormApp() {
         </div>
       </div>
 
-      {/* 中心/底部输入框 */}
-      <div 
-        className={`absolute w-full flex justify-center pointer-events-none transition-all duration-700 ease-in-out z-30 ${
-          isInputCenter ? 'top-[60%] -translate-y-1/2' : 'bottom-8'
-        }`}
-      >
-        <form 
-          onSubmit={handleInitialSubmit}
-          className={`pointer-events-auto relative group flex items-center bg-[#1a0f2e]/60 backdrop-blur-xl border p-2 transition-all duration-700
-            ${isInputCenter 
-              ? 'w-[90%] max-w-xl rounded-[3rem] border-emerald-400/50 glowing-capsule' 
-              : 'w-[90%] max-w-md rounded-full border-white/20 shadow-emerald-500/10'
-            }`}
-        >
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder="输入起始词或短句，开启发散..."
-            className="w-full bg-transparent border-none outline-none text-white px-8 py-4 placeholder:text-white/50 text-lg font-medium"
-          />
-          <button 
-            type="submit"
-            className={`absolute right-3 p-4 rounded-full transition-colors flex items-center justify-center
-              ${isInputCenter ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(52,211,153,0.8)]' : 'bg-emerald-500/80 hover:bg-emerald-400 text-white p-3 right-2'}`}
-          >
+      <div className={`absolute w-full flex justify-center pointer-events-none transition-all duration-700 ease-in-out z-30 ${isInputCenter ? 'top-[60%] -translate-y-1/2' : 'bottom-8'}`}>
+        <form onSubmit={handleInitialSubmit} className={`pointer-events-auto relative group flex items-center bg-[#1a0f2e]/60 backdrop-blur-xl border p-2 transition-all duration-700 ${isInputCenter ? 'w-[90%] max-w-xl rounded-[3rem] border-emerald-400/50 glowing-capsule' : 'w-[90%] max-w-md rounded-full border-white/20 shadow-emerald-500/10'}`}>
+          <input ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="输入起始词或短句，开启发散..." className="w-full bg-transparent border-none outline-none text-white px-8 py-4 placeholder:text-white/50 text-lg font-medium" />
+          <button type="submit" className={`absolute right-3 p-4 rounded-full transition-colors flex items-center justify-center ${isInputCenter ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(52,211,153,0.8)]' : 'bg-emerald-500/80 hover:bg-emerald-400 text-white p-3 right-2'}`}>
             <Sparkles size={isInputCenter ? 24 : 20} />
           </button>
         </form>
       </div>
 
-      {/* 详情探索模态框 */}
       {isDetailModalOpen && (
         <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-8">
           <div className="bg-[#1a0f2e] border border-blue-500/30 rounded-3xl w-full max-w-6xl h-full max-h-[90vh] shadow-[0_0_80px_rgba(59,130,246,0.15)] flex flex-col overflow-hidden">
             <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5 shrink-0">
-              <h3 className="text-2xl font-bold flex items-center gap-3 text-blue-400">
-                <Compass size={24} />
-                探索核心概念：<span className="text-white">「{detailData.word}」</span>
-              </h3>
-              <button onClick={() => setIsDetailModalOpen(false)} className="text-white/50 hover:text-white transition-colors p-2 bg-white/5 rounded-full hover:bg-white/10">
-                <X size={24} />
-              </button>
+              <h3 className="text-2xl font-bold flex items-center gap-3 text-blue-400"><Compass size={24} /> 探索核心概念：<span className="text-white">「{detailData.word}」</span></h3>
+              <button onClick={() => setIsDetailModalOpen(false)} className="text-white/50 hover:text-white transition-colors p-2 bg-white/5 rounded-full hover:bg-white/10"><X size={24} /></button>
             </div>
-            
             <div className="p-6 overflow-y-auto flex-1 text-white/90">
               {isGeneratingDetail ? (
                 <div className="flex flex-col items-center justify-center h-full text-blue-400 gap-6">
@@ -816,22 +714,10 @@ export default function BrainstormApp() {
                   <div className="flex flex-col gap-6">
                     <div className="bg-white/5 border border-white/10 p-5 rounded-2xl flex flex-col gap-3 relative">
                       <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                        <h4 className="text-lg font-semibold flex items-center gap-2 text-indigo-300">
-                          <Quote size={18} />
-                          高维文生图提示词 (Prompt)
-                        </h4>
+                        <h4 className="text-lg font-semibold flex items-center gap-2 text-indigo-300"><Quote size={18} /> 高维文生图提示词 (Prompt)</h4>
                         {detailData.prompt && (
-                          <button
-                            onClick={() => {
-                              const cleanPrompt = detailData.prompt.replace(/<english_prompt>|<\/english_prompt>/gi, '').trim();
-                              navigator.clipboard.writeText(cleanPrompt);
-                              setIsPromptCopied(true);
-                              setTimeout(() => setIsPromptCopied(false), 2000);
-                            }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-200 rounded-lg transition-all text-sm font-medium border border-indigo-500/30"
-                          >
-                            {isPromptCopied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                            {isPromptCopied ? <span className="text-emerald-400">已复制</span> : '一键复制'}
+                          <button onClick={() => { const cleanPrompt = detailData.prompt.replace(/<english_prompt>|<\/english_prompt>/gi, '').trim(); navigator.clipboard.writeText(cleanPrompt); setIsPromptCopied(true); setTimeout(() => setIsPromptCopied(false), 2000); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-200 rounded-lg transition-all text-sm font-medium border border-indigo-500/30">
+                            {isPromptCopied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />} {isPromptCopied ? <span className="text-emerald-400">已复制</span> : '一键复制'}
                           </button>
                         )}
                       </div>
@@ -839,44 +725,26 @@ export default function BrainstormApp() {
                         <div className="font-mono text-sm text-white/80 bg-black/30 p-4 rounded-xl leading-relaxed whitespace-pre-wrap max-h-[220px] overflow-y-auto custom-scrollbar">
                           {detailData.prompt.replace(/<english_prompt>|<\/english_prompt>/gi, '\n--- 【提供给 AI 的纯英文版】 ---\n')}
                         </div>
-                      ) : (
-                        <div className="h-32 bg-white/5 animate-pulse rounded-xl"></div>
-                      )}
+                      ) : <div className="h-32 bg-white/5 animate-pulse rounded-xl"></div>}
                     </div>
                     <div className="bg-white/5 border border-white/10 p-5 rounded-2xl flex-1 flex flex-col gap-3 min-h-[300px]">
-                      <h4 className="text-lg font-semibold flex items-center gap-2 text-indigo-300">
-                        <ImageIcon size={18} />
-                        概念具象图
-                      </h4>
+                      <h4 className="text-lg font-semibold flex items-center gap-2 text-indigo-300"><ImageIcon size={18} /> 概念具象图</h4>
                       <div className="flex-1 w-full bg-black/40 rounded-xl overflow-hidden relative border border-white/5 flex items-center justify-center">
-                        {detailData.image ? (
-                          <img src={detailData.image} alt="Generated Concept" className="w-full h-full object-contain" />
-                        ) : (
-                          <div className="flex flex-col items-center gap-3 text-blue-400/50">
-                            <Loader2 className="animate-spin" size={32} />
-                            <span>豆包视觉大模型正在绘制中，请稍候...</span>
-                          </div>
-                        )}
+                        {detailData.image ? <img src={detailData.image} alt="Generated Concept" className="w-full h-full object-contain" /> : <div className="flex flex-col items-center gap-3 text-blue-400/50"><Loader2 className="animate-spin" size={32} /><span>豆包视觉大模型正在绘制中，请稍候...</span></div>}
                       </div>
                     </div>
                   </div>
                   <div className="bg-white/5 border border-white/10 p-6 rounded-2xl flex flex-col gap-5 overflow-hidden">
-                    <h4 className="text-xl font-semibold flex items-center gap-2 text-teal-300 shrink-0">
-                      <Newspaper size={20} />
-                      全网资讯与趋势
-                    </h4>
+                    <h4 className="text-xl font-semibold flex items-center gap-2 text-teal-300 shrink-0"><Newspaper size={20} /> 全网资讯与趋势</h4>
                     <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar flex flex-col gap-6">
-                      <div className="text-white/80 leading-relaxed text-lg whitespace-pre-wrap">
-                        {detailData.newsText}
-                      </div>
+                      <div className="text-white/80 leading-relaxed text-lg whitespace-pre-wrap">{detailData.newsText}</div>
                       {detailData.newsSources.length > 0 && (
                         <div className="mt-4 pt-6 border-t border-white/10">
                           <h5 className="text-sm font-bold text-white/50 mb-4 uppercase tracking-wider">深度阅读链接</h5>
                           <div className="flex flex-col gap-3">
                             {detailData.newsSources.map((source, idx) => (
                               <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="group flex flex-col p-3 bg-black/20 hover:bg-black/40 border border-white/5 hover:border-teal-500/30 rounded-xl transition-all">
-                                <span className="text-teal-200 font-medium group-hover:text-teal-400 transition-colors line-clamp-1">{source.title}</span>
-                                <span className="text-xs text-white/40 mt-1 truncate">{source.uri}</span>
+                                <span className="text-teal-200 font-medium group-hover:text-teal-400 transition-colors line-clamp-1">{source.title}</span><span className="text-xs text-white/40 mt-1 truncate">{source.uri}</span>
                               </a>
                             ))}
                           </div>
@@ -891,56 +759,32 @@ export default function BrainstormApp() {
         </div>
       )}
 
-      {/* 创意文案模态框 */}
       {isIdeaModalOpen && (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#1e1136] border border-white/10 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
-            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
-              <h3 className="text-xl font-bold flex items-center gap-2 text-amber-400"><Sparkles size={20} /> 创意文案生成</h3>
-              <button onClick={() => setIsIdeaModalOpen(false)} className="text-white/50 hover:text-white transition-colors"><X size={24} /></button>
-            </div>
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5"><h3 className="text-xl font-bold flex items-center gap-2 text-amber-400"><Sparkles size={20} /> 创意文案生成</h3><button onClick={() => setIsIdeaModalOpen(false)} className="text-white/50 hover:text-white transition-colors"><X size={24} /></button></div>
             <div className="p-8 overflow-y-auto flex-1 text-white/90 leading-relaxed whitespace-pre-wrap text-lg">
-              {isGenerating ? (
-                <div className="flex flex-col items-center justify-center py-12 text-emerald-400 gap-4"><Loader2 className="animate-spin" size={40} /><p className="animate-pulse">AI正在将您的灵感火花串联...</p></div>
-              ) : (
-                <p>{generatedIdea}</p>
-              )}
+              {isGenerating ? <div className="flex flex-col items-center justify-center py-12 text-emerald-400 gap-4"><Loader2 className="animate-spin" size={40} /><p className="animate-pulse">AI正在将您的灵感火花串联...</p></div> : <p>{generatedIdea}</p>}
             </div>
-            {!isGenerating && (
-              <div className="p-6 border-t border-white/5 bg-black/20 flex justify-end gap-3">
-                <button onClick={() => navigator.clipboard.writeText(generatedIdea)} className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors font-medium"><Download size={18} /> 复制文案</button>
-              </div>
-            )}
+            {!isGenerating && <div className="p-6 border-t border-white/5 bg-black/20 flex justify-end gap-3"><button onClick={() => navigator.clipboard.writeText(generatedIdea)} className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors font-medium"><Download size={18} /> 复制文案</button></div>}
           </div>
         </div>
       )}
 
-      {/* 灵感碰撞模态框 */}
       {isInsightModalOpen && (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#2a1325] border border-orange-500/20 rounded-3xl w-full max-w-md shadow-[0_0_50px_rgba(249,115,22,0.15)] overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
-              <h3 className="text-xl font-bold flex items-center gap-2 text-orange-400"><Zap size={20} /> 灵感跨界碰撞</h3>
-              <button onClick={() => setIsInsightModalOpen(false)} className="text-white/50 hover:text-white transition-colors"><X size={24} /></button>
-            </div>
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5"><h3 className="text-xl font-bold flex items-center gap-2 text-orange-400"><Zap size={20} /> 灵感跨界碰撞</h3><button onClick={() => setIsInsightModalOpen(false)} className="text-white/50 hover:text-white transition-colors"><X size={24} /></button></div>
             <div className="p-8 overflow-y-auto text-white/90 leading-relaxed whitespace-pre-wrap text-base">
-              {isGeneratingInsight ? (
-                <div className="flex flex-col items-center justify-center py-8 text-orange-400 gap-4"><Loader2 className="animate-spin" size={40} /><p className="animate-pulse">正在寻找词语间的隐秘联系...</p></div>
-              ) : (
-                <div className="italic border-l-4 border-orange-500/50 pl-4 py-2"><p>{generatedInsight}</p></div>
-              )}
+              {isGeneratingInsight ? <div className="flex flex-col items-center justify-center py-8 text-orange-400 gap-4"><Loader2 className="animate-spin" size={40} /><p className="animate-pulse">正在寻找词语间的隐秘联系...</p></div> : <div className="italic border-l-4 border-orange-500/50 pl-4 py-2"><p>{generatedInsight}</p></div>}
             </div>
           </div>
         </div>
       )}
 
-      {/* 全局CSS */}
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes dash { to { stroke-dashoffset: -12; } }
-        @keyframes capsule-glow {
-          0%, 100% { box-shadow: 0 0 30px rgba(52,211,153,0.3), inset 0 0 20px rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.4); }
-          50% { box-shadow: 0 0 60px rgba(52,211,153,0.7), inset 0 0 40px rgba(52,211,153,0.3); border-color: rgba(52,211,153,0.9); }
-        }
+        @keyframes capsule-glow { 0%, 100% { box-shadow: 0 0 30px rgba(52,211,153,0.3), inset 0 0 20px rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.4); } 50% { box-shadow: 0 0 60px rgba(52,211,153,0.7), inset 0 0 40px rgba(52,211,153,0.3); border-color: rgba(52,211,153,0.9); } }
         .glowing-capsule { animation: capsule-glow 3s ease-in-out infinite; }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
