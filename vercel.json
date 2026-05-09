@@ -1,8 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/api/v3/:path*",
-      "destination": "[https://ark.cn-beijing.volces.com/api/v3/:path](https://ark.cn-beijing.volces.com/api/v3/:path)*"
+      "source": "/doubao-api/:path*",
+      "destination": "https://ark.cn-beijing.volces.com/api/v3/:path*"
     },
     {
       "source": "/(.*)",
