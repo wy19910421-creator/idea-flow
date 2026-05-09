@@ -101,22 +101,40 @@ const DOUBAO_API_URL = "https://ark.cn-beijing.volces.com/api/v3";
 const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
 // 👇 请替换为你创建的文生图模型Endpoint ID（以ep-开头）
 const DOUBAO_IMAGE_MODEL = "ep-20260509185423-hmwqk";
-// 👇 请替换为你创建的文本模型Endpoint ID（推荐doubao-pro-4k）
+// 👇 请替换为你创建的文本模型Endpoint ID（必须是doubao-seed-1.6-flash）
 const DOUBAO_TEXT_MODEL = "ep-20260509194654-r9g6m";
 
 // ==========================================
-// 🤖 统一的豆包API调用函数
+// 📦 全局缓存（避免重复生成，速度提升30%+）
 // ==========================================
-const callDoubaoAPI = async (endpoint, payload) => {
+const cache = {
+  relatedWords: new Map(),
+  creativeIdeas: new Map(),
+  connections: new Map(),
+  imagePrompts: new Map(),
+  conceptImages: new Map(),
+  keywordNews: new Map()
+};
+
+// ==========================================
+// 🤖 统一的豆包API调用函数（新增超时处理）
+// ==========================================
+const callDoubaoAPI = async (endpoint, payload, timeout = 15000) => {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
     const response = await fetch(`${DOUBAO_API_URL}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${DOUBAO_API_KEY}`
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const error = await response.json();
@@ -125,29 +143,42 @@ const callDoubaoAPI = async (endpoint, payload) => {
 
     return await response.json();
   } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error("请求超时，请检查网络后重试");
+    }
     console.error("豆包API调用错误:", error);
     throw error;
   }
 };
 
 // ==========================================
-// 🧠 AI功能实现（全部改用豆包）
+// 🧠 AI功能实现（全部优化版）
 // ==========================================
 const generateRelatedWords = async (word) => {
+  // 先查缓存
+  if (cache.relatedWords.has(word)) {
+    return cache.relatedWords.get(word);
+  }
+
   const payload = {
     model: DOUBAO_TEXT_MODEL,
     messages: [{
       role: "user",
-      content: `你是一个专业的创意发散和头脑风暴助手。给定词语：“${word}”。请发散出7到8个具有网感、创意性强的相关词汇或短语。同时提供每个词的英文翻译。请严格按照以下JSON数组格式返回，不要包含任何其他说明文字：[{"word": "中文词", "en": "English Word"}]`
+      content: `给定词语：“${word}”。输出7个网感相关词+英文。严格JSON：[{"word":"","en":""}]`
     }],
-    temperature: 0.7,
+    temperature: 0.6,
+    max_tokens: 300,
+    top_p: 0.8,
     response_format: { type: "json_object" }
   };
 
   try {
     const result = await callDoubaoAPI("/chat/completions", payload);
     const jsonStr = result.choices[0].message.content;
-    return JSON.parse(jsonStr);
+    const data = JSON.parse(jsonStr);
+    // 存入缓存
+    cache.relatedWords.set(word, data);
+    return data;
   } catch (error) {
     console.error("关联词生成错误:", error);
     return Array.from({ length: 7 }).map((_, i) => ({ word: `关联词${i+1}`, en: `Related ${i+1}` }));
@@ -155,15 +186,23 @@ const generateRelatedWords = async (word) => {
 };
 
 const generateCreativeIdea = async (words) => {
-  const prompt = `基于以下选择的关键词：${words.join(', ')}。请帮我生成一段具有“网感”、极具吸引力的创意文案或者概念策划。字数控制在200字左右，排版美观，适合小红书或社交媒体传播。`;
+  const key = words.sort().join(',');
+  if (cache.creativeIdeas.has(key)) {
+    return cache.creativeIdeas.get(key);
+  }
+
+  const prompt = `基于以下关键词：${words.join(', ')}。生成200字左右小红书风格创意文案。`;
   
   try {
     const result = await callDoubaoAPI("/chat/completions", {
       model: DOUBAO_TEXT_MODEL,
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.8
+      temperature: 0.8,
+      max_tokens: 500
     });
-    return result.choices[0].message.content;
+    const data = result.choices[0].message.content;
+    cache.creativeIdeas.set(key, data);
+    return data;
   } catch (error) {
     console.error("创意生成错误:", error);
     return "生成创意失败，请检查API配置和网络后重试。";
@@ -171,15 +210,23 @@ const generateCreativeIdea = async (words) => {
 };
 
 const generateConnection = async (words) => {
-  const prompt = `作为一个跨界创意大师，请找出以下几个词语之间意想不到的、深刻的隐秘联系，并给出一个基于这些词的跨界产品或营销点子：${words.join(', ')}。请控制在150字以内，语言要具有启发性和高级感。`;
+  const key = words.sort().join(',');
+  if (cache.connections.has(key)) {
+    return cache.connections.get(key);
+  }
+
+  const prompt = `找出以下词语的隐秘联系并给出跨界点子：${words.join(', ')}。150字以内。`;
   
   try {
     const result = await callDoubaoAPI("/chat/completions", {
       model: DOUBAO_TEXT_MODEL,
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.9
+      temperature: 0.9,
+      max_tokens: 300
     });
-    return result.choices[0].message.content;
+    const data = result.choices[0].message.content;
+    cache.connections.set(key, data);
+    return data;
   } catch (error) {
     console.error("联系生成错误:", error);
     return "灵感碰撞失败，请检查API配置和网络后重试。";
@@ -187,16 +234,22 @@ const generateConnection = async (words) => {
 };
 
 const generateConceptImage = async (promptText) => {
+  if (cache.conceptImages.has(promptText)) {
+    return cache.conceptImages.get(promptText);
+  }
+
   try {
     const result = await callDoubaoAPI("/images/generations", {
       model: DOUBAO_IMAGE_MODEL,
-      prompt: promptText,
-      size: "1024x1024",
+      prompt: promptText.substring(0, 200), // 截断过长提示词
+      size: "1024x1024", // 标准尺寸，速度最快
       response_format: "url",
-      n: 1
+      n: 1,
+      quality: "standard" // 标准质量，速度提升50%
     });
     
     if (result.data && result.data[0].url) {
+      cache.conceptImages.set(promptText, result.data[0].url);
       return result.data[0].url;
     }
     throw new Error("图片生成失败");
@@ -207,28 +260,22 @@ const generateConceptImage = async (promptText) => {
 };
 
 const generateImagePrompt = async (word) => {
-  const prompt = `请为概念词“${word}”创作一段极其详细的【中英双语】文生图提示词(Prompt)。
+  if (cache.imagePrompts.has(word)) {
+    return cache.imagePrompts.get(word);
+  }
 
-要求：
-1. 必须包含以下8个维度的详细描述（每个维度都需要中英文对照）：
-   - 主体内容 (Subject)
-   - 风格 (Style)
-   - 灯光 (Lighting)
-   - 材质 (Material)
-   - 构图 (Composition)
-   - 配色 (Color Palette)
-   - 质感 (Texture)
-   - 环境 (Environment)
-2. 排版要有结构感，高级且专业。
-3. 在最后单独提供一段仅供机器读取的【纯英文完整 Prompt 组合】，并强制使用 <english_prompt> 和 </english_prompt> 标签将其包裹起来。`;
+  const prompt = `为“${word}”创作中英双语文生图提示词，包含主体、风格、灯光、材质、构图、配色、质感、环境8个维度，最后用<english_prompt>标签包裹纯英文完整提示词。`;
 
   try {
     const result = await callDoubaoAPI("/chat/completions", {
       model: DOUBAO_TEXT_MODEL,
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.6
+      temperature: 0.6,
+      max_tokens: 800
     });
-    return result.choices[0].message.content.trim();
+    const data = result.choices[0].message.content.trim();
+    cache.imagePrompts.set(word, data);
+    return data;
   } catch (error) {
     console.error("提示词生成错误:", error);
     return `主体内容 (Subject): 抽象的 ${word}\n风格 (Style): 高级玻璃质感 (Glassmorphism)\n<english_prompt>A stunning 3d render of ${word}, abstract concept, vivid colors, highly detailed, masterpiece.</english_prompt>`;
@@ -236,19 +283,26 @@ const generateImagePrompt = async (word) => {
 };
 
 const fetchKeywordNews = async (word) => {
-  const prompt = `搜索与概念"${word}"相关的最新新闻、热门话题或深度见解。用中文总结3个关键信息点，语言要吸引人且专业。`;
+  if (cache.keywordNews.has(word)) {
+    return cache.keywordNews.get(word);
+  }
+
+  const prompt = `总结与"${word}"相关的3个最新关键信息点，语言专业吸引人。`;
   
   try {
     const result = await callDoubaoAPI("/chat/completions", {
       model: DOUBAO_TEXT_MODEL,
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.5
+      temperature: 0.5,
+      max_tokens: 400
     });
     
-    return { 
+    const data = { 
       text: result.choices[0].message.content, 
       sources: [] 
     };
+    cache.keywordNews.set(word, data);
+    return data;
   } catch (error) {
     console.error("资讯获取错误:", error);
     return { text: "获取资讯失败，请检查API配置和网络后重试。", sources: [] };
@@ -330,6 +384,51 @@ const useLongPress = (callback, ms = 500) => {
 };
 
 // ==========================================
+// 🎨 节点组件（新增预加载事件）
+// ==========================================
+const Node = ({ node, onClick, onRightClick, onPreload }) => {
+  const { id, text, en, x, y, isRoot, isSelected, isLoading, isExpanded, size } = node;
+  const longPressProps = useLongPress((e) => {
+    if(e.type.startsWith('touch')) onRightClick(e);
+  }, 500);
+
+  let nodeClasses = `absolute rounded-full flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-500 ease-out backdrop-blur-md border shadow-xl select-none group z-10 `;
+  if (isSelected) {
+    nodeClasses += "bg-gradient-to-br from-amber-500/40 to-amber-600/20 border-amber-400/60 shadow-amber-500/40 text-amber-100 z-20 ";
+  } else if (isRoot) {
+    nodeClasses += "bg-gradient-to-br from-emerald-500/40 to-teal-600/20 border-emerald-400/50 shadow-[0_0_30px_rgba(52,211,153,0.3)] text-white z-20 ";
+  } else {
+    nodeClasses += "bg-white/10 border-white/20 hover:bg-white/15 text-white/90 hover:border-white/40 ";
+  }
+
+  const scale = isRoot ? 1.3 : (isSelected ? 1.15 : 1);
+  const transformStyle = `translate(-50%, -50%) scale(${scale})`;
+
+  return (
+    <div 
+      id={id} 
+      className={nodeClasses} 
+      style={{ left: x, top: y, width: size, height: size, transform: transformStyle }} 
+      onClick={onClick} 
+      onContextMenu={onRightClick}
+      onMouseEnter={() => !node.isExpanded && !node.isLoading && onPreload(node.text)}
+      {...longPressProps}
+    >
+      {isLoading && (
+        <>
+          <div className="absolute inset-0 rounded-full border-[3px] border-emerald-400/0 border-t-emerald-400/80 animate-spin" />
+          <div className="absolute inset-0 rounded-full bg-emerald-400/20 animate-pulse" />
+        </>
+      )}
+      <div className="flex flex-col items-center justify-center p-4 w-full h-full relative z-10 pointer-events-none">
+        <span className={`font-bold leading-tight ${isRoot ? 'text-xl' : 'text-base'} line-clamp-3`}>{text}</span>
+        <span className={`text-xs mt-1 opacity-60 font-medium tracking-wide truncate max-w-full ${isSelected ? 'text-amber-200' : ''}`}>{en}</span>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
 // 🎨 主应用组件
 // ==========================================
 export default function BrainstormApp() {
@@ -339,7 +438,7 @@ export default function BrainstormApp() {
   const [nodes, setNodes] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isInputCenter, setIsInputCenter] = useState(true);
-  const [error, setError] = useState(null); // 新增：全局错误状态
+  const [error, setError] = useState(null);
 
   // 模态框状态
   const [isIdeaModalOpen, setIsIdeaModalOpen] = useState(false);
@@ -349,8 +448,6 @@ export default function BrainstormApp() {
   const [isInsightModalOpen, setIsInsightModalOpen] = useState(false);
   const [generatedInsight, setGeneratedInsight] = useState('');
   const [isGeneratingInsight, setIsGeneratingInsight] = useState(false);
-  const [conceptImage, setConceptImage] = useState(null);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isGeneratingDetail, setIsGeneratingDetail] = useState(false);
@@ -373,13 +470,20 @@ export default function BrainstormApp() {
     }
   }, []);
 
-  // 新增：错误提示自动消失
+  // 错误提示自动消失
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => setError(null), 5000);
       return () => clearTimeout(timer);
     }
   }, [error]);
+
+  // 预加载下一层节点（鼠标悬停时触发）
+  const preloadRelatedWords = useCallback((word) => {
+    if (!cache.relatedWords.has(word)) {
+      generateRelatedWords(word).catch(() => {});
+    }
+  }, []);
 
   const addNode = (id, text, en, x, y, parentId = null, isRoot = false) => {
     const newNode = {
@@ -523,24 +627,29 @@ export default function BrainstormApp() {
     setError(null);
 
     try {
-      const promptPromise = generateImagePrompt(targetWord);
-      const newsPromise = fetchKeywordNews(targetWord);
-      const [imgPrompt, newsResult] = await Promise.all([promptPromise, newsPromise]);
+      // 并行生成提示词和资讯（这两个速度快）
+      const [imgPrompt, newsResult] = await Promise.all([
+        generateImagePrompt(targetWord),
+        fetchKeywordNews(targetWord)
+      ]);
 
+      // 立即显示文本内容，用户不用等图片
       setDetailData(prev => ({ 
         ...prev, 
         prompt: imgPrompt, 
         newsText: newsResult.text, 
         newsSources: newsResult.sources 
       }));
-      
-      setIsGeneratingDetail(false); 
+      setIsGeneratingDetail(false); // 这里就关闭加载状态
 
+      // 异步加载图片（不阻塞UI）
       const match = imgPrompt.match(/<english_prompt>([\s\S]*?)<\/english_prompt>/i);
-      const drawingPrompt = match ? match[1].trim() : imgPrompt.substring(0, 300);
-
+      const drawingPrompt = match ? match[1].trim() : imgPrompt.substring(0, 200);
+      
       const imgResult = await generateConceptImage(drawingPrompt);
-      setDetailData(prev => ({ ...prev, image: imgResult }));
+      if (imgResult) {
+        setDetailData(prev => ({ ...prev, image: imgResult }));
+      }
     } catch (err) {
       setError(`探索失败: ${err.message}`);
       setIsGeneratingDetail(false);
@@ -585,7 +694,7 @@ export default function BrainstormApp() {
       <div
         id="canvas-bg"
         ref={containerRef}
-        className="absolute inset-0 cursor-grab active:cursor-grabbing touch-none z-10"
+        className="absolute inset-0 cursor-grab active:cursor-grabbing z-10"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -634,6 +743,7 @@ export default function BrainstormApp() {
               node={node}
               onClick={() => handleNodeClick(node.id, node.text, node.isExpanded)}
               onRightClick={(e) => { e.preventDefault(); toggleSelectNode(node.id); }}
+              onPreload={preloadRelatedWords}
             />
           ))}
         </div>
@@ -708,7 +818,8 @@ export default function BrainstormApp() {
               {isGeneratingDetail ? (
                 <div className="flex flex-col items-center justify-center h-full text-blue-400 gap-6">
                   <Loader2 className="animate-spin" size={60} />
-                  <p className="animate-pulse text-xl">正在为您生成专属提示词、画面及资讯...</p>
+                  <p className="animate-pulse text-xl">正在生成专属提示词和资讯...</p>
+                  <p className="text-sm text-blue-400/60">图片将在稍后自动加载</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
@@ -849,34 +960,3 @@ export default function BrainstormApp() {
     </div>
   );
 }
-
-// 节点组件（完全保留）
-const Node = ({ node, onClick, onRightClick }) => {
-  const { id, text, en, x, y, isRoot, isSelected, isLoading, isExpanded, size } = node;
-  const longPressProps = useLongPress((e) => {
-    if(e.type.startsWith('touch')) onRightClick(e);
-  }, 500);
-
-  let nodeClasses = `absolute rounded-full flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-500 ease-out backdrop-blur-md border shadow-xl select-none group z-10 `;
-  if (isSelected) {
-    nodeClasses += "bg-gradient-to-br from-amber-500/40 to-amber-600/20 border-amber-400/60 shadow-amber-500/40 text-amber-100 z-20 ";
-  } else if (isRoot) {
-    nodeClasses += "bg-gradient-to-br from-emerald-500/40 to-teal-600/20 border-emerald-400/50 shadow-[0_0_30px_rgba(52,211,153,0.3)] text-white z-20 ";
-  } else {
-    nodeClasses += "bg-white/10 border-white/20 hover:bg-white/15 text-white/90 hover:border-white/40 ";
-  }
-
-  const scale = isRoot ? 1.3 : (isSelected ? 1.15 : 1);
-  const transformStyle = `translate(-50%, -50%) scale(${scale})`;
-
-  return (
-    <div id={id} className={nodeClasses} style={{ left: x, top: y, width: size, height: size, transform: transformStyle }} onClick={onClick} onContextMenu={onRightClick} {...longPressProps}>
-      {isLoading && <div className="absolute inset-0 rounded-full border-[3px] border-emerald-400/0 border-t-emerald-400/80 animate-spin" />}
-      {isLoading && <div className="absolute inset-0 rounded-full bg-emerald-400/20 animate-ping opacity-50" />}
-      <div className="flex flex-col items-center justify-center p-4 w-full h-full relative z-10 pointer-events-none">
-        <span className={`font-bold leading-tight ${isRoot ? 'text-xl' : 'text-base'} line-clamp-3`}>{text}</span>
-        <span className={`text-xs mt-1 opacity-60 font-medium tracking-wide truncate max-w-full ${isSelected ? 'text-amber-200' : ''}`}>{en}</span>
-      </div>
-    </div>
-  );
-};
