@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Sparkles, Download, Trash2, History, X, Loader2, Maximize, MousePointer2, Zap, Image as ImageIcon, Compass, Newspaper, Quote, Copy, Check, AlertCircle } from 'lucide-react';
+import { Sparkles, Download, Trash2, History, X, Loader2, Maximize, MousePointer2, Zap, Image as ImageIcon, Compass, Newspaper, Quote, Copy, Check, AlertCircle, BookOpen } from 'lucide-react';
 
 // ==========================================
 // 🌌 二进制树画布动画组件
@@ -93,17 +93,14 @@ const BinaryTreeCanvas = () => {
 // ==========================================
 // 🚀 火山引擎豆包 API 配置
 // ==========================================
-// 完美绕过 Vercel 405 拦截的改名版通道！
 const DOUBAO_API_URL = "/doubao-api";
-
-// 👇 请确保这是你真实的 API KEY
 const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
 
 // 🔴 必改项：此处必须填入豆包的【文生图模型】 Endpoint ID
-const DOUBAO_IMAGE_MODEL = "ep-20260509185423-hmwqk"; // 如果你确定这个是绘图模型，就保留
+const DOUBAO_IMAGE_MODEL = "ep-20260509185423-hmwqk"; 
 
 // 🔴 必改项：此处必须填入豆包的【文本对话模型】 Endpoint ID
-const DOUBAO_TEXT_MODEL = "ep-20260509194654-r9g6m"; // <-- 请去火山引擎再看一眼，填入真实的“对话文本”模型ID（不能和上面的画图ID一模一样！）
+const DOUBAO_TEXT_MODEL = "ep-20260509194654-r9g6m"; // <-- 记得改这里！
 
 
 // ==========================================
@@ -121,7 +118,7 @@ const cache = {
 // ==========================================
 // 🤖 统一的豆包API调用函数
 // ==========================================
-const callDoubaoAPI = async (endpoint, payload, timeout = 30000) => {
+const callDoubaoAPI = async (endpoint, payload, timeout = 25000) => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -157,19 +154,20 @@ const callDoubaoAPI = async (endpoint, payload, timeout = 30000) => {
 };
 
 // ==========================================
-// 🧠 AI 功能实现
+// 🧠 AI 功能实现 (深度优化提速版)
 // ==========================================
 const generateRelatedWords = async (word) => {
   if (cache.relatedWords.has(word)) return cache.relatedWords.get(word);
 
+  // 【优化】极致精简 Prompt，要求 AI 直接输出结果，不讲废话
   const payload = {
     model: DOUBAO_TEXT_MODEL,
     messages: [{
       role: "user",
-      content: `给定词语：“${word}”。输出7个网感相关词+英文翻译。你必须严格返回JSON数组格式，不要包含任何多余的markdown文本。格式示例：[{"word":"中文","en":"english"}]`
+      content: `直接输出与“${word}”相关的7个网感词及英文，必须是严格的JSON数组格式：[{"word":"中文","en":"english"}]`
     }],
     temperature: 0.6,
-    max_tokens: 300,
+    max_tokens: 200, // 【优化】大幅降低生成Token数量，加速返回
     response_format: { type: "json_object" }
   };
 
@@ -197,13 +195,13 @@ const generateCreativeIdea = async (words) => {
   const key = words.sort().join(',');
   if (cache.creativeIdeas.has(key)) return cache.creativeIdeas.get(key);
 
-  const prompt = `基于以下关键词：${words.join(', ')}。生成200字左右小红书风格创意文案。`;
+  const prompt = `基于以下词语：${words.join(', ')}。生成一篇小红书爆款文案，语言精炼，控制在150字以内。`;
   
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.8,
-    max_tokens: 500
+    max_tokens: 300 // 【优化】限制字数提速
   });
   const data = result.choices[0].message.content;
   cache.creativeIdeas.set(key, data);
@@ -214,13 +212,13 @@ const generateConnection = async (words) => {
   const key = words.sort().join(',');
   if (cache.connections.has(key)) return cache.connections.get(key);
 
-  const prompt = `找出以下词语的隐秘联系并给出跨界点子：${words.join(', ')}。150字以内。`;
+  const prompt = `一句话总结以下词语的隐秘联系并给出跨界点子：${words.join(', ')}。100字内。`;
   
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.9,
-    max_tokens: 300
+    temperature: 0.8,
+    max_tokens: 150 // 【优化】限制字数提速
   });
   const data = result.choices[0].message.content;
   cache.connections.set(key, data);
@@ -254,13 +252,14 @@ const generateConceptImage = async (promptText) => {
 const generateImagePrompt = async (word) => {
   if (cache.imagePrompts.has(word)) return cache.imagePrompts.get(word);
 
-  const prompt = `为“${word}”创作中英双语文生图提示词，包含主体、风格、灯光、材质、构图、配色、质感、环境8个维度，最后用<english_prompt>标签包裹纯英文完整提示词。`;
+  // 【优化】保留要求但强调“简练”，大幅减少多余修饰语的生成时间
+  const prompt = `为“${word}”写一段文生图提示词。包含主体、风格、光影、材质、配色5个维度(中英对照)，极度简练。最后用<english_prompt>包裹纯英文完整提示词。`;
 
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.6,
-    max_tokens: 800
+    max_tokens: 400 // 【优化】减少Token限制
   });
   const data = result.choices[0].message.content.trim();
   cache.imagePrompts.set(word, data);
@@ -270,13 +269,13 @@ const generateImagePrompt = async (word) => {
 const fetchKeywordNews = async (word) => {
   if (cache.keywordNews.has(word)) return cache.keywordNews.get(word);
 
-  const prompt = `总结与"${word}"相关的3个最新关键信息点，语言专业吸引人。`;
+  const prompt = `用极简的语言（100字内）总结"${word}"的3个最新趋势或商业点。`;
   
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.5,
-    max_tokens: 400
+    max_tokens: 200 // 【优化】减少Token限制
   });
   
   const data = { 
@@ -370,7 +369,7 @@ const Node = ({ node, onClick, onRightClick, onPreload }) => {
     if(e.type.startsWith('touch')) onRightClick(e);
   }, 500);
 
-  let nodeClasses = `absolute rounded-full flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-500 ease-out backdrop-blur-md border shadow-xl select-none group z-10 `;
+  let nodeClasses = `absolute rounded-full flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 ease-out backdrop-blur-md border shadow-xl select-none group z-10 `;
   if (isSelected) {
     nodeClasses += "bg-gradient-to-br from-amber-500/40 to-amber-600/20 border-amber-400/60 shadow-amber-500/40 text-amber-100 z-20 ";
   } else if (isRoot) {
@@ -657,7 +656,7 @@ export default function BrainstormApp() {
               if (!source || !target) return null;
               return (
                 <g key={`${link.source}-${link.target}`}>
-                  <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={target.isSelected ? "rgba(245, 158, 11, 0.4)" : "rgba(255, 255, 255, 0.15)"} strokeWidth={target.isSelected ? 3 : 1.5} className="transition-all duration-500 ease-out" />
+                  <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={target.isSelected ? "rgba(245, 158, 11, 0.4)" : "rgba(255, 255, 255, 0.15)"} strokeWidth={target.isSelected ? 3 : 1.5} className="transition-all duration-300 ease-out" />
                   {source.isLoading && <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke="rgba(16, 185, 129, 0.5)" strokeWidth="2" strokeDasharray="4 8" className="animate-[dash_1s_linear_infinite]" />}
                 </g>
               );
@@ -669,8 +668,33 @@ export default function BrainstormApp() {
         </div>
       </div>
 
-      <div className="absolute top-0 w-full p-6 flex justify-between items-start pointer-events-none z-20">
-        <div></div>
+      {/* ========================================== */}
+      {/* 📖 左上角 TIPS 指南框 (书本外框样式) */}
+      {/* ========================================== */}
+      <div className={`absolute top-6 left-6 pointer-events-none z-20 transition-all duration-700 ease-in-out ${isInputCenter ? 'opacity-0 translate-y-4' : 'opacity-90 translate-y-0'}`}>
+        <div className="bg-[#1a0f2e]/60 backdrop-blur-xl border border-white/10 border-l-[6px] border-l-emerald-500 rounded-r-2xl rounded-l-sm p-5 shadow-2xl min-w-[280px]">
+          <h3 className="text-emerald-400 font-bold mb-4 flex items-center gap-2 text-sm tracking-widest uppercase">
+            <BookOpen size={16} /> 操作指南 TIPS
+          </h3>
+          <ul className="text-sm text-white/80 space-y-3 font-medium">
+            <li className="flex items-center gap-3">
+              <div className="p-1.5 bg-white/5 rounded-md border border-white/10"><MousePointer2 size={14} className="text-emerald-400"/></div>
+              <span><b className="text-white">左键点击：</b> 继续发散关联词</span>
+            </li>
+            <li className="flex items-center gap-3">
+              <div className="p-1.5 bg-white/5 rounded-md border border-white/10"><MousePointer2 size={14} className="text-amber-400"/></div>
+              <span><b className="text-white">右键点击：</b> 选择/取消 (支持多选)</span>
+            </li>
+            <li className="flex items-center gap-3">
+              <div className="p-1.5 bg-white/5 rounded-md border border-white/10"><Maximize size={14} className="text-blue-400"/></div>
+              <span><b className="text-white">拖拽画布：</b> 移动和缩放视角</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      {/* 顶部右侧导航按钮 */}
+      <div className="absolute top-0 right-0 w-full p-6 flex justify-end items-start pointer-events-none z-20">
         <div className="flex gap-3 pointer-events-auto">
           <button onClick={clearCanvas} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/10 rounded-full text-sm font-medium transition-all text-white/80 hover:text-white">
             <Trash2 size={16} /> <span className="hidden sm:inline">清空画布</span>
