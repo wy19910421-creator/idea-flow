@@ -102,10 +102,10 @@ const DOUBAO_API_URL = "/api/v3";
 const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
 
 // 🔴 必改项：此处必须填入豆包的【文生图模型】 Endpoint ID
-const DOUBAO_IMAGE_MODEL = "ep-xxxxxxxx-xxxxx"; // <-- 请替换为真实的图像模型ID
+const DOUBAO_IMAGE_MODEL = "ep-20260509185423-hmwqk"; // <-- 请替换为真实的图像模型ID
 
 // 🔴 必改项：此处必须填入豆包的【文本对话模型】 Endpoint ID (不能和上面一样!)
-const DOUBAO_TEXT_MODEL = "ep-xxxxxxxx-xxxxx"; // <-- 请替换为真实的文本模型ID
+const DOUBAO_TEXT_MODEL = "ep-20260509194654-r9g6m"; // <-- 请替换为真实的文本模型ID
 
 
 // ==========================================
