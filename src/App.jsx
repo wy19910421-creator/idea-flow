@@ -189,8 +189,8 @@ const generateConceptImage = async (promptText) => {
   // =====================================================================
   /*
   try {
-    const DOUBAO_API_URL = "https://open.volcengineapi.com/api/v2/endpoint/您的EndpointID/text2image";
-    const DOUBAO_API_KEY = "您的火山引擎API_KEY";
+    const DOUBAO_API_URL = "https://open.volcengineapi.com/api/v2/endpoint/ep-20260509185423-hmwqk/text2image";
+    const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
     
     const payload = {
       req_key: "high_aes_general_v20", // 豆包文生图模型标识
