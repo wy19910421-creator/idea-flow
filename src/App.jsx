@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Sparkles, Download, Trash2, History, X, Loader2, Maximize, MousePointer2, Zap, Image as ImageIcon, Compass, Newspaper, Quote, Copy, Check } from 'lucide-react';
+import { Sparkles, Download, Trash2, History, X, Loader2, Maximize, MousePointer2, Zap, Image as ImageIcon, Compass, Newspaper, Quote, Copy, Check, AlertCircle } from 'lucide-react';
 
 // ==========================================
-// 🌌 Binary Tree Canvas Animation Component
+// 🌌 二进制树画布动画组件（完全保留）
 // ==========================================
 const BinaryTreeCanvas = () => {
   const canvasRef = useRef(null);
@@ -26,7 +26,6 @@ const BinaryTreeCanvas = () => {
       const endX = x + len * Math.cos(angle);
       const endY = y + len * Math.sin(angle);
       
-      // Density of binary characters
       const steps = Math.floor(len / 16); 
       for(let i=0; i<=steps; i++){
         const px = x + (endX - x) * (i/steps);
@@ -37,12 +36,11 @@ const BinaryTreeCanvas = () => {
           x: px,
           y: py,
           char: Math.random() > 0.5 ? '1' : '0',
-          baseAlpha: 0.2 + (depth / 10) * 0.8, // Thicker branches are brighter
+          baseAlpha: 0.2 + (depth / 10) * 0.8,
           distance: distance
         });
       }
       
-      // Recursive branching with slight random organic angles
       buildTree(endX, endY, len * 0.78, angle - 0.4 + (Math.random()*0.15-0.075), depth - 1, arr, rootX, rootY);
       buildTree(endX, endY, len * 0.78, angle + 0.4 + (Math.random()*0.15-0.075), depth - 1, arr, rootX, rootY);
     };
@@ -52,7 +50,6 @@ const BinaryTreeCanvas = () => {
       growth = 0;
       const rootX = canvas.width / 2;
       const rootY = canvas.height;
-      // Start building tree from bottom center
       buildTree(rootX, rootY, Math.min(canvas.width, canvas.height) / 4.5, -Math.PI / 2, 8, points, rootX, rootY);
     };
 
@@ -63,20 +60,17 @@ const BinaryTreeCanvas = () => {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       
-      // Glowing effect
       ctx.shadowBlur = 10;
-      ctx.shadowColor = '#34d399'; // Emerald green glow
+      ctx.shadowColor = '#34d399';
 
-      growth += 8; // Speed of tree growth
+      growth += 8;
 
       for(let i=0; i<points.length; i++) {
         const p = points[i];
         if (p.distance < growth) {
-          // 5% chance to flip binary character to make it dynamic
           if (Math.random() < 0.05) {
             p.char = p.char === '1' ? '0' : '1';
           }
-          // Slight flicker in opacity
           const alpha = p.baseAlpha * (0.6 + Math.random() * 0.4);
           ctx.fillStyle = `rgba(52, 211, 153, ${alpha})`;
           ctx.fillText(p.char, p.x, p.y);
@@ -99,106 +93,23 @@ const BinaryTreeCanvas = () => {
   return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />;
 };
 
+// ==========================================
+// 🚀 火山引擎豆包API配置（请填入你的信息）
+// ==========================================
+const DOUBAO_API_URL = "https://ark.cn-beijing.volces.com/api/v3";
+// 👇 请替换为你在火山方舟获取的API Key（以ark-开头）
+const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
+// 👇 请替换为你创建的文生图模型Endpoint ID（以ep-开头）
+const DOUBAO_IMAGE_MODEL = "ep-20260509185423-hmwqk";
+// 👇 请替换为你创建的文本模型Endpoint ID（推荐doubao-pro-4k）
+const DOUBAO_TEXT_MODEL = "ep-20260509194654-r9g6m";
 
-// --- AI API Integration (Using Gemini for runtime preview compatibility) ---
-// Note: You can replace this with Doubao API logic later.
-const generateRelatedWords = async (word) => {
-  const payload = {
-    contents: [{ parts: [{ text: `你是一个专业的创意发散和头脑风暴助手。给定词语：“${word}”。请发散出7到8个具有网感、创意性强的相关词汇或短语。同时提供每个词的英文翻译。请严格按照以下JSON数组格式返回，不要包含任何其他说明文字：[{"word": "中文词", "en": "English Word"}]` }] }],
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: "ARRAY",
-        items: {
-          type: "OBJECT",
-          properties: {
-            word: { type: "STRING" },
-            en: { type: "STRING" }
-          },
-          required: ["word", "en"]
-        }
-      }
-    }
-  };
-
+// ==========================================
+// 🤖 统一的豆包API调用函数
+// ==========================================
+const callDoubaoAPI = async (endpoint, payload) => {
   try {
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=`;
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const result = await response.json();
-    if (result.candidates && result.candidates.length > 0) {
-      const jsonStr = result.candidates[0].content.parts[0].text;
-      return JSON.parse(jsonStr);
-    }
-    return [];
-  } catch (error) {
-    console.error("AI Generation Error:", error);
-    // Fallback data if API fails
-    return Array.from({ length: 7 }).map((_, i) => ({ word: `关联词${i+1}`, en: `Related ${i+1}` }));
-  }
-};
-
-const generateCreativeIdea = async (words) => {
-  const prompt = `基于以下选择的关键词：${words.join(', ')}。请帮我生成一段具有“网感”、极具吸引力的创意文案或者概念策划。字数控制在200字左右，排版美观，适合小红书或社交媒体传播。`;
-  const payload = {
-    contents: [{ parts: [{ text: prompt }] }]
-  };
-  try {
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=`;
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const result = await response.json();
-    return result.candidates[0].content.parts[0].text;
-  } catch (error) {
-    console.error("Idea Generation Error:", error);
-    return "生成创意失败，请检查网络后重试。";
-  }
-};
-
-const generateConnection = async (words) => {
-  const prompt = `作为一个跨界创意大师，请找出以下几个词语之间意想不到的、深刻的隐秘联系，并给出一个基于这些词的跨界产品或营销点子：${words.join(', ')}。请控制在150字以内，语言要具有启发性和高级感。`;
-  const payload = {
-    contents: [{ parts: [{ text: prompt }] }]
-  };
-  try {
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=`;
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const result = await response.json();
-    return result.candidates[0].content.parts[0].text;
-  } catch (error) {
-    console.error("Connection Generation Error:", error);
-    return "灵感碰撞失败，请检查网络后重试。";
-  }
-};
-
-const generateConceptImage = async (promptText) => {
-  // =====================================================================
-  // 🚀 豆包 (火山引擎) 绘图 API 调用结构示例
-  // 注意：如果您要部署并使用真实的豆包大模型，请解开以下代码的注释，
-  // 并替换为您在火山引擎获取的 Endpoint 和 API Key。
-  // =====================================================================
-  /*
-  try {
-    const DOUBAO_API_URL = "https://open.volcengineapi.com/api/v2/endpoint/ep-20260509185423-hmwqk/text2image";
-    const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
-    
-    const payload = {
-      req_key: "high_aes_general_v20", // 豆包文生图模型标识
-      prompt: promptText,
-      model_version: "general_v2.0",
-      req_schedule_conf: "general_v20_9B_bg" // 替换为真实的配置节点
-    };
-    const response = await fetch(DOUBAO_API_URL, {
+    const response = await fetch(`${DOUBAO_API_URL}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -206,35 +117,95 @@ const generateConceptImage = async (promptText) => {
       },
       body: JSON.stringify(payload)
     });
-    const result = await response.json();
-    // 根据豆包实际返回的JSON结构获取图片 URL/Base64 并返回
-    if (result.data && result.data.image_url) return result.data.image_url;
-  } catch (error) {
-    console.error("Doubao Image Generation Error:", error);
-  }
-  */
 
-  // --- 以下为演示环境内置模型 Fallback，确保您在当前页面能直接预览效果 ---
-  const prompt = `Abstract, high-quality, conceptual 3d render representing this concept: ${promptText}. Beautiful dramatic lighting, glowing elements, deep purple and emerald green color palette, glassmorphism style, masterpiece.`;
-  const payload = { instances: { prompt: prompt }, parameters: { "sampleCount": 1 } };
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=`;
-  try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const result = await response.json();
-    if (result.predictions && result.predictions.length > 0 && result.predictions[0].bytesBase64Encoded) {
-      return `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || `API请求失败: ${response.status}`);
     }
+
+    return await response.json();
   } catch (error) {
-    console.error("Image Generation Error:", error);
+    console.error("豆包API调用错误:", error);
+    throw error;
   }
-  return null;
 };
 
-// --- New Features AI Integration (Prompt & News) ---
+// ==========================================
+// 🧠 AI功能实现（全部改用豆包）
+// ==========================================
+const generateRelatedWords = async (word) => {
+  const payload = {
+    model: DOUBAO_TEXT_MODEL,
+    messages: [{
+      role: "user",
+      content: `你是一个专业的创意发散和头脑风暴助手。给定词语：“${word}”。请发散出7到8个具有网感、创意性强的相关词汇或短语。同时提供每个词的英文翻译。请严格按照以下JSON数组格式返回，不要包含任何其他说明文字：[{"word": "中文词", "en": "English Word"}]`
+    }],
+    temperature: 0.7,
+    response_format: { type: "json_object" }
+  };
+
+  try {
+    const result = await callDoubaoAPI("/chat/completions", payload);
+    const jsonStr = result.choices[0].message.content;
+    return JSON.parse(jsonStr);
+  } catch (error) {
+    console.error("关联词生成错误:", error);
+    return Array.from({ length: 7 }).map((_, i) => ({ word: `关联词${i+1}`, en: `Related ${i+1}` }));
+  }
+};
+
+const generateCreativeIdea = async (words) => {
+  const prompt = `基于以下选择的关键词：${words.join(', ')}。请帮我生成一段具有“网感”、极具吸引力的创意文案或者概念策划。字数控制在200字左右，排版美观，适合小红书或社交媒体传播。`;
+  
+  try {
+    const result = await callDoubaoAPI("/chat/completions", {
+      model: DOUBAO_TEXT_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.8
+    });
+    return result.choices[0].message.content;
+  } catch (error) {
+    console.error("创意生成错误:", error);
+    return "生成创意失败，请检查API配置和网络后重试。";
+  }
+};
+
+const generateConnection = async (words) => {
+  const prompt = `作为一个跨界创意大师，请找出以下几个词语之间意想不到的、深刻的隐秘联系，并给出一个基于这些词的跨界产品或营销点子：${words.join(', ')}。请控制在150字以内，语言要具有启发性和高级感。`;
+  
+  try {
+    const result = await callDoubaoAPI("/chat/completions", {
+      model: DOUBAO_TEXT_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.9
+    });
+    return result.choices[0].message.content;
+  } catch (error) {
+    console.error("联系生成错误:", error);
+    return "灵感碰撞失败，请检查API配置和网络后重试。";
+  }
+};
+
+const generateConceptImage = async (promptText) => {
+  try {
+    const result = await callDoubaoAPI("/images/generations", {
+      model: DOUBAO_IMAGE_MODEL,
+      prompt: promptText,
+      size: "1024x1024",
+      response_format: "url",
+      n: 1
+    });
+    
+    if (result.data && result.data[0].url) {
+      return result.data[0].url;
+    }
+    throw new Error("图片生成失败");
+  } catch (error) {
+    console.error("图片生成错误:", error);
+    return null;
+  }
+};
+
 const generateImagePrompt = async (word) => {
   const prompt = `请为概念词“${word}”创作一段极其详细的【中英双语】文生图提示词(Prompt)。
 
@@ -251,73 +222,48 @@ const generateImagePrompt = async (word) => {
 2. 排版要有结构感，高级且专业。
 3. 在最后单独提供一段仅供机器读取的【纯英文完整 Prompt 组合】，并强制使用 <english_prompt> 和 </english_prompt> 标签将其包裹起来。`;
 
-  const payload = { contents: [{ parts: [{ text: prompt }] }] };
   try {
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=`;
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const result = await callDoubaoAPI("/chat/completions", {
+      model: DOUBAO_TEXT_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.6
     });
-    const result = await response.json();
-    return result.candidates[0].content.parts[0].text.trim();
+    return result.choices[0].message.content.trim();
   } catch (error) {
-    console.error("Prompt Generation Error:", error);
+    console.error("提示词生成错误:", error);
     return `主体内容 (Subject): 抽象的 ${word}\n风格 (Style): 高级玻璃质感 (Glassmorphism)\n<english_prompt>A stunning 3d render of ${word}, abstract concept, vivid colors, highly detailed, masterpiece.</english_prompt>`;
   }
 };
 
 const fetchKeywordNews = async (word) => {
-  const payload = {
-    contents: [{ parts: [{ text: `Search for the latest news, trending topics, or deeper insights related to the concept: "${word}". Summarize 3 key informative points in Chinese. Make it engaging and professional.` }] }],
-    tools: [{ "google_search": {} }] // Enable real-time Google Search grounding
-  };
+  const prompt = `搜索与概念"${word}"相关的最新新闻、热门话题或深度见解。用中文总结3个关键信息点，语言要吸引人且专业。`;
+  
   try {
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=`;
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const result = await callDoubaoAPI("/chat/completions", {
+      model: DOUBAO_TEXT_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.5
     });
-    const result = await response.json();
-    const candidate = result.candidates?.[0];
-    let text = "暂无相关新闻资讯。";
-    let sources = [];
     
-    if (candidate && candidate.content?.parts?.[0]?.text) {
-      text = candidate.content.parts[0].text;
-      const metadata = candidate.groundingMetadata;
-      if (metadata && metadata.groundingAttributions) {
-        sources = metadata.groundingAttributions
-          .map(attr => ({ uri: attr.web?.uri, title: attr.web?.title }))
-          .filter(src => src.uri && src.title);
-      }
-    }
-    
-    // Deduplicate sources by URL
-    const uniqueSources = [];
-    const seenUris = new Set();
-    for (const s of sources) {
-      if (!seenUris.has(s.uri)) {
-        seenUris.add(s.uri);
-        uniqueSources.push(s);
-      }
-    }
-    return { text, sources: uniqueSources };
+    return { 
+      text: result.choices[0].message.content, 
+      sources: [] 
+    };
   } catch (error) {
-    console.error("News Fetch Error:", error);
-    return { text: "获取资讯失败，请检查网络后重试。", sources: [] };
+    console.error("资讯获取错误:", error);
+    return { text: "获取资讯失败，请检查API配置和网络后重试。", sources: [] };
   }
 };
 
-// Hook for Canvas Panning and Zooming
+// ==========================================
+// 🖱️ 画布平移缩放钩子（完全保留）
+// ==========================================
 const usePanZoom = (containerRef) => {
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const isDragging = useRef(false);
   const lastPan = useRef({ x: 0, y: 0 });
 
   const onPointerDown = useCallback((e) => {
-    // Only pan on canvas background or middle mouse button
     if (e.target.id === 'canvas-bg' || e.button === 1) {
       isDragging.current = true;
       lastPan.current = { x: e.clientX, y: e.clientY };
@@ -345,7 +291,7 @@ const usePanZoom = (containerRef) => {
       const zoomSensitivity = 0.001;
       const delta = -e.deltaY * zoomSensitivity;
       let newScale = t.scale * Math.exp(delta);
-      newScale = Math.min(Math.max(newScale, 0.1), 3); // Limit scale
+      newScale = Math.min(Math.max(newScale, 0.1), 3);
 
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
@@ -362,7 +308,9 @@ const usePanZoom = (containerRef) => {
   return { transform, isDragging, onPointerDown, onPointerMove, onPointerUp, onWheel, setTransform };
 };
 
-// Hook for mobile long press
+// ==========================================
+// 📱 移动端长按钩子（完全保留）
+// ==========================================
 const useLongPress = (callback, ms = 500) => {
   const timeout = useRef();
   const start = useCallback((e) => {
@@ -381,16 +329,19 @@ const useLongPress = (callback, ms = 500) => {
   };
 };
 
+// ==========================================
+// 🎨 主应用组件
+// ==========================================
 export default function BrainstormApp() {
   const containerRef = useRef(null);
   const { transform, isDragging, onPointerDown, onPointerMove, onPointerUp, onWheel, setTransform } = usePanZoom(containerRef);
   
   const [nodes, setNodes] = useState([]);
-  const [links, setLinks] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isInputCenter, setIsInputCenter] = useState(true);
-  
-  // Modals States
+  const [error, setError] = useState(null); // 新增：全局错误状态
+
+  // 模态框状态
   const [isIdeaModalOpen, setIsIdeaModalOpen] = useState(false);
   const [generatedIdea, setGeneratedIdea] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -406,7 +357,7 @@ export default function BrainstormApp() {
   const [detailData, setDetailData] = useState({ word: '', prompt: '', image: null, newsText: '', newsSources: [] });
   const [isPromptCopied, setIsPromptCopied] = useState(false);
 
-  // Focus input on start
+  // 输入框自动聚焦
   const inputRef = useRef(null);
   useEffect(() => {
     if (isInputCenter && inputRef.current) {
@@ -414,13 +365,21 @@ export default function BrainstormApp() {
     }
   }, [isInputCenter]);
 
-  // Center canvas on mount
+  // 画布居中
   useEffect(() => {
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       setTransform({ x: rect.width / 2, y: rect.height / 2, scale: 1 });
     }
   }, []);
+
+  // 新增：错误提示自动消失
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   const addNode = (id, text, en, x, y, parentId = null, isRoot = false) => {
     const newNode = {
@@ -429,9 +388,6 @@ export default function BrainstormApp() {
       size: Math.max(100, Math.min(200, 80 + text.length * 15)) 
     };
     setNodes(prev => [...prev, newNode]);
-    if (parentId) {
-      setLinks(prev => [...prev, { source: parentId, target: id }]);
-    }
     return newNode;
   };
 
@@ -442,9 +398,9 @@ export default function BrainstormApp() {
     const rootWord = inputValue.trim();
     setInputValue('');
     setIsInputCenter(false);
+    setError(null);
     
     setNodes([]);
-    setLinks([]);
     
     const rootId = `node-${Date.now()}`;
     addNode(rootId, rootWord, "Root Concept", 0, 0, null, true);
@@ -453,46 +409,51 @@ export default function BrainstormApp() {
 
   const expandNode = async (nodeId, word) => {
     setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, isLoading: true } : n));
-    const relatedData = await generateRelatedWords(word);
-    
-    setNodes(prev => {
-      const currentNodes = [...prev];
-      const parentIndex = currentNodes.findIndex(n => n.id === nodeId);
-      if (parentIndex === -1) return currentNodes;
+    try {
+      const relatedData = await generateRelatedWords(word);
       
-      const parent = currentNodes[parentIndex];
-      parent.isLoading = false;
-      parent.isExpanded = true;
-
-      const count = relatedData.length;
-      const radius = 250;
-      let startAngle = 0;
-      let angleRange = Math.PI * 2;
-
-      if (parent.parentId) {
-        const grandParent = currentNodes.find(n => n.id === parent.parentId);
-        if (grandParent) {
-          const angleFromParent = Math.atan2(parent.y - grandParent.y, parent.x - grandParent.x);
-          startAngle = angleFromParent - Math.PI / 2;
-          angleRange = Math.PI; 
-        }
-      }
-
-      relatedData.forEach((data, index) => {
-        const angle = startAngle + (angleRange / count) * index + (angleRange / count) / 2;
-        const r = radius + (Math.random() * 50 - 25); 
-        const childX = parent.x + Math.cos(angle) * r;
-        const childY = parent.y + Math.sin(angle) * r;
-        const childId = `node-${Date.now()}-${index}`;
+      setNodes(prev => {
+        const currentNodes = [...prev];
+        const parentIndex = currentNodes.findIndex(n => n.id === nodeId);
+        if (parentIndex === -1) return currentNodes;
         
-        currentNodes.push({
-          id: childId, text: data.word, en: data.en, x: childX, y: childY, parentId: nodeId, isRoot: false,
-          isSelected: false, isExpanded: false, isLoading: false,
-          size: Math.max(90, Math.min(180, 70 + data.word.length * 15))
+        const parent = currentNodes[parentIndex];
+        parent.isLoading = false;
+        parent.isExpanded = true;
+
+        const count = relatedData.length;
+        const radius = 250;
+        let startAngle = 0;
+        let angleRange = Math.PI * 2;
+
+        if (parent.parentId) {
+          const grandParent = currentNodes.find(n => n.id === parent.parentId);
+          if (grandParent) {
+            const angleFromParent = Math.atan2(parent.y - grandParent.y, parent.x - grandParent.x);
+            startAngle = angleFromParent - Math.PI / 2;
+            angleRange = Math.PI; 
+          }
+        }
+
+        relatedData.forEach((data, index) => {
+          const angle = startAngle + (angleRange / count) * index + (angleRange / count) / 2;
+          const r = radius + (Math.random() * 50 - 25); 
+          const childX = parent.x + Math.cos(angle) * r;
+          const childY = parent.y + Math.sin(angle) * r;
+          const childId = `node-${Date.now()}-${index}`;
+          
+          currentNodes.push({
+            id: childId, text: data.word, en: data.en, x: childX, y: childY, parentId: nodeId, isRoot: false,
+            isSelected: false, isExpanded: false, isLoading: false,
+            size: Math.max(90, Math.min(180, 70 + data.word.length * 15))
+          });
         });
+        return currentNodes;
       });
-      return currentNodes;
-    });
+    } catch (err) {
+      setError(`展开节点失败: ${err.message}`);
+      setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, isLoading: false } : n));
+    }
   };
 
   const activeLinks = useMemo(() => {
@@ -518,11 +479,17 @@ export default function BrainstormApp() {
     setIsIdeaModalOpen(true);
     setIsGenerating(true);
     setGeneratedIdea('');
-    setConceptImage(null); 
+    setError(null);
     
-    const idea = await generateCreativeIdea(wordsToUse);
-    setGeneratedIdea(idea);
-    setIsGenerating(false);
+    try {
+      const idea = await generateCreativeIdea(wordsToUse);
+      setGeneratedIdea(idea);
+    } catch (err) {
+      setError(`生成创意失败: ${err.message}`);
+      setGeneratedIdea("生成创意失败，请检查API配置和网络后重试。");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleGenerateInsight = async () => {
@@ -532,10 +499,17 @@ export default function BrainstormApp() {
     setIsInsightModalOpen(true);
     setIsGeneratingInsight(true);
     setGeneratedInsight('');
+    setError(null);
     
-    const insight = await generateConnection(selectedWords);
-    setGeneratedInsight(insight);
-    setIsGeneratingInsight(false);
+    try {
+      const insight = await generateConnection(selectedWords);
+      setGeneratedInsight(insight);
+    } catch (err) {
+      setError(`灵感碰撞失败: ${err.message}`);
+      setGeneratedInsight("灵感碰撞失败，请检查API配置和网络后重试。");
+    } finally {
+      setIsGeneratingInsight(false);
+    }
   };
 
   const handleConfirmExplore = async () => {
@@ -546,6 +520,7 @@ export default function BrainstormApp() {
     setIsDetailModalOpen(true);
     setIsGeneratingDetail(true);
     setDetailData({ word: targetWord, prompt: '', image: null, newsText: '', newsSources: [] });
+    setError(null);
 
     try {
       const promptPromise = generateImagePrompt(targetWord);
@@ -567,36 +542,46 @@ export default function BrainstormApp() {
       const imgResult = await generateConceptImage(drawingPrompt);
       setDetailData(prev => ({ ...prev, image: imgResult }));
     } catch (err) {
-      console.error("Explore Error:", err);
+      setError(`探索失败: ${err.message}`);
       setIsGeneratingDetail(false);
     }
   };
 
   const clearCanvas = () => {
     setNodes([]);
-    setLinks([]);
     setIsInputCenter(true);
+    setError(null);
     setTransform({ x: window.innerWidth / 2, y: window.innerHeight / 2, scale: 1 });
   };
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-[#160B2A] text-white selection:bg-emerald-500/30">
       
-      {/* 1. Deep Purple Base Background (Revealed completely when tree fades) */}
+      {/* 全局错误提示 */}
+      {error && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 bg-red-500/90 backdrop-blur-md border border-red-400/50 rounded-full shadow-lg shadow-red-500/30">
+          <AlertCircle size={20} />
+          <span className="font-medium">{error}</span>
+          <button onClick={() => setError(null)} className="ml-2 hover:text-red-200">
+            <X size={18} />
+          </button>
+        </div>
+      )}
+      
+      {/* 深紫色背景 */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#2a164b] via-[#160b2a] to-[#0f071e] pointer-events-none -z-10" />
       
-      {/* Dynamic Binary Tree Background (Fades out when input is submitted) */}
+      {/* 动态二进制树背景 */}
       <div 
         className={`absolute inset-0 transition-opacity duration-1000 ease-in-out pointer-events-none z-0
           ${isInputCenter ? 'opacity-100' : 'opacity-0'}`}
       >
         <BinaryTreeCanvas />
-        {/* Glow overlays to blend tree with background */}
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-emerald-500/10 blur-[120px] rounded-full" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-amber-500/10 blur-[120px] rounded-full" />
       </div>
 
-      {/* Main Canvas Area (Draggable) */}
+      {/* 主画布区域 */}
       <div
         id="canvas-bg"
         ref={containerRef}
@@ -615,7 +600,7 @@ export default function BrainstormApp() {
           }}
           className="absolute top-0 left-0"
         >
-          {/* Edges */}
+          {/* 连接线 */}
           <svg className="absolute top-0 left-0 overflow-visible pointer-events-none">
             {activeLinks.map((link, i) => {
               const source = nodes.find(n => n.id === link.source);
@@ -642,7 +627,7 @@ export default function BrainstormApp() {
             })}
           </svg>
 
-          {/* Nodes */}
+          {/* 节点 */}
           {nodes.map(node => (
             <Node
               key={node.id}
@@ -654,7 +639,7 @@ export default function BrainstormApp() {
         </div>
       </div>
 
-      {/* Top Navigation */}
+      {/* 顶部导航 */}
       <div className="absolute top-0 w-full p-6 flex justify-between items-start pointer-events-none z-20">
         <div></div>
         <div className="flex gap-3 pointer-events-auto">
@@ -673,7 +658,7 @@ export default function BrainstormApp() {
         </div>
       </div>
 
-      {/* Center / Bottom Glowing Input Capsule */}
+      {/* 中心/底部输入框 */}
       <div 
         className={`absolute w-full flex justify-center pointer-events-none transition-all duration-700 ease-in-out z-30 ${
           isInputCenter ? 'top-[60%] -translate-y-1/2' : 'bottom-8'
@@ -705,7 +690,7 @@ export default function BrainstormApp() {
         </form>
       </div>
 
-      {/* Detail Explore Modal */}
+      {/* 详情探索模态框 */}
       {isDetailModalOpen && (
         <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-8">
           <div className="bg-[#1a0f2e] border border-blue-500/30 rounded-3xl w-full max-w-6xl h-full max-h-[90vh] shadow-[0_0_80px_rgba(59,130,246,0.15)] flex flex-col overflow-hidden">
@@ -723,7 +708,7 @@ export default function BrainstormApp() {
               {isGeneratingDetail ? (
                 <div className="flex flex-col items-center justify-center h-full text-blue-400 gap-6">
                   <Loader2 className="animate-spin" size={60} />
-                  <p className="animate-pulse text-xl">正在为您生成专属提示词、画面及全网资讯...</p>
+                  <p className="animate-pulse text-xl">正在为您生成专属提示词、画面及资讯...</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
@@ -768,7 +753,7 @@ export default function BrainstormApp() {
                         ) : (
                           <div className="flex flex-col items-center gap-3 text-blue-400/50">
                             <Loader2 className="animate-spin" size={32} />
-                            <span>Imagen 正在极速绘制中...</span>
+                            <span>豆包正在极速绘制中...</span>
                           </div>
                         )}
                       </div>
@@ -805,7 +790,7 @@ export default function BrainstormApp() {
         </div>
       )}
 
-      {/* Idea Modal */}
+      {/* 创意文案模态框 */}
       {isIdeaModalOpen && (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#1e1136] border border-white/10 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
@@ -829,7 +814,7 @@ export default function BrainstormApp() {
         </div>
       )}
 
-      {/* Insight Modal */}
+      {/* 灵感碰撞模态框 */}
       {isInsightModalOpen && (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#2a1325] border border-orange-500/20 rounded-3xl w-full max-w-md shadow-[0_0_50px_rgba(249,115,22,0.15)] overflow-hidden flex flex-col">
@@ -848,7 +833,7 @@ export default function BrainstormApp() {
         </div>
       )}
 
-      {/* Global CSS for Glow Animations & Scrollbars */}
+      {/* 全局CSS */}
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes dash { to { stroke-dashoffset: -12; } }
         @keyframes capsule-glow {
@@ -865,6 +850,7 @@ export default function BrainstormApp() {
   );
 }
 
+// 节点组件（完全保留）
 const Node = ({ node, onClick, onRightClick }) => {
   const { id, text, en, x, y, isRoot, isSelected, isLoading, isExpanded, size } = node;
   const longPressProps = useLongPress((e) => {
