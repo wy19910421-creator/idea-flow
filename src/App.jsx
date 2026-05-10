@@ -97,7 +97,7 @@ const DOUBAO_API_URL = "/doubao-api";
 const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
 
 // 🔴 必改项：此处必须填入豆包的【文本对话模型】 Endpoint ID
-const DOUBAO_TEXT_MODEL = "ep-xxxxxxxx-xxxxx"; // <-- 记得改成真实的对话模型ID！
+const DOUBAO_TEXT_MODEL = "ep-20260509194654-r9g6m"; // <-- 记得改成真实的对话模型ID！
 
 
 // ==========================================
