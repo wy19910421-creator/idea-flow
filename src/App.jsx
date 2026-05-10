@@ -159,7 +159,6 @@ const callDoubaoAPI = async (endpoint, payload, timeout = 25000) => {
 const generateRelatedWords = async (word) => {
   if (cache.relatedWords.has(word)) return cache.relatedWords.get(word);
 
-  // 【优化】极致精简 Prompt，要求 AI 直接输出结果，不讲废话
   const payload = {
     model: DOUBAO_TEXT_MODEL,
     messages: [{
@@ -167,7 +166,7 @@ const generateRelatedWords = async (word) => {
       content: `直接输出与“${word}”相关的7个网感词及英文，必须是严格的JSON数组格式：[{"word":"中文","en":"english"}]`
     }],
     temperature: 0.6,
-    max_tokens: 200, // 【优化】大幅降低生成Token数量，加速返回
+    max_tokens: 200, 
     response_format: { type: "json_object" }
   };
 
@@ -201,7 +200,7 @@ const generateCreativeIdea = async (words) => {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.8,
-    max_tokens: 300 // 【优化】限制字数提速
+    max_tokens: 300 
   });
   const data = result.choices[0].message.content;
   cache.creativeIdeas.set(key, data);
@@ -218,7 +217,7 @@ const generateConnection = async (words) => {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.8,
-    max_tokens: 150 // 【优化】限制字数提速
+    max_tokens: 150 
   });
   const data = result.choices[0].message.content;
   cache.connections.set(key, data);
@@ -252,14 +251,13 @@ const generateConceptImage = async (promptText) => {
 const generateImagePrompt = async (word) => {
   if (cache.imagePrompts.has(word)) return cache.imagePrompts.get(word);
 
-  // 【优化】保留要求但强调“简练”，大幅减少多余修饰语的生成时间
   const prompt = `为“${word}”写一段文生图提示词。包含主体、风格、光影、材质、配色5个维度(中英对照)，极度简练。最后用<english_prompt>包裹纯英文完整提示词。`;
 
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.6,
-    max_tokens: 400 // 【优化】减少Token限制
+    max_tokens: 400 
   });
   const data = result.choices[0].message.content.trim();
   cache.imagePrompts.set(word, data);
@@ -275,7 +273,7 @@ const fetchKeywordNews = async (word) => {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.5,
-    max_tokens: 200 // 【优化】减少Token限制
+    max_tokens: 200 
   });
   
   const data = { 
@@ -340,42 +338,24 @@ const usePanZoom = (containerRef) => {
 };
 
 // ==========================================
-// 📱 移动端长按钩子
+// 🎨 节点组件 (支持自由拖拽排版)
 // ==========================================
-const useLongPress = (callback, ms = 500) => {
-  const timeout = useRef();
-  const start = useCallback((e) => {
-    if (e.type === 'mousedown' && e.button !== 0) return; 
-    timeout.current = setTimeout(() => callback(e), ms);
-  }, [callback, ms]);
-  const clear = useCallback(() => {
-    timeout.current && clearTimeout(timeout.current);
-  }, []);
-  return {
-    onMouseDown: start,
-    onMouseUp: clear,
-    onMouseLeave: clear,
-    onTouchStart: start,
-    onTouchEnd: clear,
-  };
-};
+const Node = ({ node, isDragging, onPointerDown, onPointerMove, onPointerUp, onRightClick, onPreload }) => {
+  const { id, text, en, x, y, isRoot, isSelected, isLoading, size } = node;
 
-// ==========================================
-// 🎨 节点组件
-// ==========================================
-const Node = ({ node, onClick, onRightClick, onPreload }) => {
-  const { id, text, en, x, y, isRoot, isSelected, isLoading, isExpanded, size } = node;
-  const longPressProps = useLongPress((e) => {
-    if(e.type.startsWith('touch')) onRightClick(e);
-  }, 500);
-
-  let nodeClasses = `absolute rounded-full flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 ease-out backdrop-blur-md border shadow-xl select-none group z-10 `;
+  let nodeClasses = `absolute rounded-full flex flex-col items-center justify-center text-center cursor-pointer select-none group z-10 backdrop-blur-md border shadow-xl `;
+  
   if (isSelected) {
     nodeClasses += "bg-gradient-to-br from-amber-500/40 to-amber-600/20 border-amber-400/60 shadow-amber-500/40 text-amber-100 z-20 ";
   } else if (isRoot) {
     nodeClasses += "bg-gradient-to-br from-emerald-500/40 to-teal-600/20 border-emerald-400/50 shadow-[0_0_30px_rgba(52,211,153,0.3)] text-white z-20 ";
   } else {
     nodeClasses += "bg-white/10 border-white/20 hover:bg-white/15 text-white/90 hover:border-white/40 ";
+  }
+
+  // 如果没有处于拖拽中，才增加动画过渡，保证拖拽时顺滑跟随
+  if (!isDragging) {
+    nodeClasses += "transition-all duration-300 ease-out ";
   }
 
   const scale = isRoot ? 1.3 : (isSelected ? 1.15 : 1);
@@ -386,10 +366,11 @@ const Node = ({ node, onClick, onRightClick, onPreload }) => {
       id={id} 
       className={nodeClasses} 
       style={{ left: x, top: y, width: size, height: size, transform: transformStyle }} 
-      onClick={onClick} 
+      onPointerDown={(e) => onPointerDown(e, node)}
+      onPointerMove={onPointerMove}
+      onPointerUp={(e) => onPointerUp(e, node)}
       onContextMenu={onRightClick}
       onMouseEnter={() => !node.isExpanded && !node.isLoading && onPreload(node.text)}
-      {...longPressProps}
     >
       {isLoading && (
         <>
@@ -410,12 +391,17 @@ const Node = ({ node, onClick, onRightClick, onPreload }) => {
 // ==========================================
 export default function BrainstormApp() {
   const containerRef = useRef(null);
-  const { transform, isDragging, onPointerDown, onPointerMove, onPointerUp, onWheel, setTransform } = usePanZoom(containerRef);
+  const { transform, isDragging: isCanvasDragging, onPointerDown: onCanvasPointerDown, onPointerMove: onCanvasPointerMove, onPointerUp: onCanvasPointerUp, onWheel, setTransform } = usePanZoom(containerRef);
   
   const [nodes, setNodes] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isInputCenter, setIsInputCenter] = useState(true);
   const [error, setError] = useState(null);
+
+  // 节点拖拽相关状态
+  const [draggedNodeId, setDraggedNodeId] = useState(null);
+  const nodeDragInfo = useRef({ id: null, startX: 0, startY: 0, nodeStartX: 0, nodeStartY: 0, moved: false, longPressed: false });
+  const longPressTimeout = useRef(null);
 
   const [isIdeaModalOpen, setIsIdeaModalOpen] = useState(false);
   const [generatedIdea, setGeneratedIdea] = useState('');
@@ -477,14 +463,12 @@ export default function BrainstormApp() {
     let newY = 0;
 
     if (nodes.length > 0) {
-      // If canvas already has nodes, place the new root at the center of the current viewport
-      // Add a slight random offset to prevent exact overlapping if user submits multiple without moving
       const centerX = (window.innerWidth / 2 - transform.x) / transform.scale;
       const centerY = (window.innerHeight / 2 - transform.y) / transform.scale;
       newX = centerX + (Math.random() * 80 - 40);
       newY = centerY + (Math.random() * 80 - 40);
     } else {
-      setNodes([]); // Safe reset for the very first node
+      setNodes([]); 
     }
     
     const rootId = `node-${Date.now()}`;
@@ -548,13 +532,78 @@ export default function BrainstormApp() {
     setNodes(prev => prev.map(n => n.id === id ? { ...n, isSelected: !n.isSelected } : n));
   };
 
-  const handleNodeClick = (id, text, isExpanded) => {
-    if (!isExpanded) expandNode(id, text);
+  // --- 节点指针事件：支持拖拽和移动端长按 ---
+  const handleNodePointerDown = (e, node) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return; // 只响应左键和触屏
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    
+    nodeDragInfo.current = {
+      id: node.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      nodeStartX: node.x,
+      nodeStartY: node.y,
+      moved: false,
+      longPressed: false
+    };
+    setDraggedNodeId(node.id);
+
+    // 移动端长按模拟右键选择
+    longPressTimeout.current = setTimeout(() => {
+      nodeDragInfo.current.longPressed = true;
+      toggleSelectNode(node.id);
+    }, 500);
+  };
+
+  const handleNodePointerMove = (e) => {
+    if (nodeDragInfo.current.id) {
+      e.stopPropagation();
+      const dx = (e.clientX - nodeDragInfo.current.startX) / transform.scale;
+      const dy = (e.clientY - nodeDragInfo.current.startY) / transform.scale;
+      
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        nodeDragInfo.current.moved = true;
+        if (longPressTimeout.current) {
+          clearTimeout(longPressTimeout.current);
+          longPressTimeout.current = null;
+        }
+      }
+
+      // 实时更新位置
+      setNodes(prev => prev.map(n => 
+        n.id === nodeDragInfo.current.id 
+        ? { ...n, x: nodeDragInfo.current.nodeStartX + dx, y: nodeDragInfo.current.nodeStartY + dy } 
+        : n
+      ));
+    }
+  };
+
+  const handleNodePointerUp = (e, node) => {
+    if (nodeDragInfo.current.id === node.id) {
+      e.stopPropagation();
+      e.currentTarget.releasePointerCapture(e.pointerId);
+      
+      if (longPressTimeout.current) {
+        clearTimeout(longPressTimeout.current);
+        longPressTimeout.current = null;
+      }
+      
+      const wasMoved = nodeDragInfo.current.moved;
+      const wasLongPressed = nodeDragInfo.current.longPressed;
+      
+      setDraggedNodeId(null);
+      nodeDragInfo.current = { id: null, startX: 0, startY: 0, nodeStartX: 0, nodeStartY: 0, moved: false, longPressed: false };
+      
+      // 如果既没有移动，也没有触发长按，则判定为普通点击（发散）
+      if (!wasMoved && !wasLongPressed) {
+        if (!node.isExpanded) expandNode(node.id, node.text);
+      }
+    }
   };
 
   const handleGenerateIdea = async () => {
     const selectedWords = nodes.filter(n => n.isSelected).map(n => n.text);
-    // Support multiple root words if nothing is selected
     const rootWords = nodes.filter(n => n.isRoot).map(n => n.text);
     if (selectedWords.length === 0 && rootWords.length === 0) return;
     const wordsToUse = selectedWords.length > 0 ? selectedWords : rootWords;
@@ -662,23 +711,36 @@ export default function BrainstormApp() {
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-amber-500/10 blur-[120px] rounded-full" />
       </div>
 
-      <div id="canvas-bg" ref={containerRef} className="absolute inset-0 cursor-grab active:cursor-grabbing z-10" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onWheel={onWheel}>
-        <div style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0', transition: isDragging.current ? 'none' : 'transform 0.1s ease-out' }} className="absolute top-0 left-0">
+      <div id="canvas-bg" ref={containerRef} className="absolute inset-0 cursor-grab active:cursor-grabbing z-10" onPointerDown={onCanvasPointerDown} onPointerMove={onCanvasPointerMove} onPointerUp={onCanvasPointerUp} onPointerCancel={onCanvasPointerUp} onWheel={onWheel}>
+        <div style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0', transition: isCanvasDragging.current ? 'none' : 'transform 0.1s ease-out' }} className="absolute top-0 left-0">
           <svg className="absolute top-0 left-0 overflow-visible pointer-events-none">
             {activeLinks.map((link, i) => {
               const source = nodes.find(n => n.id === link.source);
               const target = nodes.find(n => n.id === link.target);
               if (!source || !target) return null;
+              
+              // 拖拽时取消连线的动画延迟，使其丝滑跟随
+              const isLineDragging = draggedNodeId === link.source || draggedNodeId === link.target;
+              
               return (
                 <g key={`${link.source}-${link.target}`}>
-                  <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={target.isSelected ? "rgba(245, 158, 11, 0.4)" : "rgba(255, 255, 255, 0.15)"} strokeWidth={target.isSelected ? 3 : 1.5} className="transition-all duration-300 ease-out" />
+                  <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={target.isSelected ? "rgba(245, 158, 11, 0.4)" : "rgba(255, 255, 255, 0.15)"} strokeWidth={target.isSelected ? 3 : 1.5} className={isLineDragging ? "" : "transition-all duration-300 ease-out"} />
                   {source.isLoading && <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke="rgba(16, 185, 129, 0.5)" strokeWidth="2" strokeDasharray="4 8" className="animate-[dash_1s_linear_infinite]" />}
                 </g>
               );
             })}
           </svg>
           {nodes.map(node => (
-            <Node key={node.id} node={node} onClick={() => handleNodeClick(node.id, node.text, node.isExpanded)} onRightClick={(e) => { e.preventDefault(); toggleSelectNode(node.id); }} onPreload={preloadRelatedWords} />
+            <Node 
+              key={node.id} 
+              node={node} 
+              isDragging={draggedNodeId === node.id}
+              onPointerDown={handleNodePointerDown}
+              onPointerMove={handleNodePointerMove}
+              onPointerUp={handleNodePointerUp}
+              onRightClick={(e) => { e.preventDefault(); toggleSelectNode(node.id); }} 
+              onPreload={preloadRelatedWords} 
+            />
           ))}
         </div>
       </div>
@@ -697,12 +759,16 @@ export default function BrainstormApp() {
               <span><b className="text-white">左键点击：</b> 继续发散关联词</span>
             </li>
             <li className="flex items-center gap-3">
+              <div className="p-1.5 bg-white/5 rounded-md border border-white/10"><MousePointer2 size={14} className="text-indigo-400"/></div>
+              <span><b className="text-white">左键拖拽：</b> 自由移动词语位置</span>
+            </li>
+            <li className="flex items-center gap-3">
               <div className="p-1.5 bg-white/5 rounded-md border border-white/10"><MousePointer2 size={14} className="text-amber-400"/></div>
               <span><b className="text-white">右键点击：</b> 选择/取消 (支持多选)</span>
             </li>
             <li className="flex items-center gap-3">
               <div className="p-1.5 bg-white/5 rounded-md border border-white/10"><Maximize size={14} className="text-blue-400"/></div>
-              <span><b className="text-white">拖拽画布：</b> 移动和缩放视角</span>
+              <span><b className="text-white">背景拖拽：</b> 移动和缩放视角</span>
             </li>
           </ul>
         </div>
