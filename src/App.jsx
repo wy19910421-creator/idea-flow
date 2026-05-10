@@ -97,8 +97,8 @@ const DOUBAO_API_URL = "/doubao-api";
 const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
 
 // 🔴 必改项：此处必须填入豆包的【文本对话模型】 Endpoint ID
-// ⚡ 强烈建议：为了体验秒出的快感，请在后台创建一个 "doubao-lite-4k" 或 "doubao-lite-32k" 模型填入下方！
-const DOUBAO_TEXT_MODEL = "ep-20260510180326-qtvbg"; // <-- 记得改成真实的对话模型ID！
+// ⚡ 强烈建议：为了体验秒出、防止 Vercel 504 超时，请务必在后台创建一个 "doubao-lite-4k" 模型填入下方！
+const DOUBAO_TEXT_MODEL = "ep-20260510210717-bgq5v"; // <-- 记得改成真实的对话模型ID！
 
 
 // ==========================================
@@ -113,7 +113,7 @@ const cache = {
 };
 
 // ==========================================
-// 🤖 统一的豆包API调用函数
+// 🤖 统一的豆包API调用函数 (新增精准超时拦截)
 // ==========================================
 const callDoubaoAPI = async (endpoint, payload, timeout = 60000) => {
   try {
@@ -133,6 +133,13 @@ const callDoubaoAPI = async (endpoint, payload, timeout = 60000) => {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
+      if (response.status === 504) {
+        throw new Error("Vercel云端10秒限制拦截！请在火山后台把模型换成更快的 doubao-lite 试试。");
+      }
+      if (response.status === 429) {
+        throw new Error("并发请求太多被限流啦，请稍微等几秒钟再试哦。");
+      }
+      
       const errorText = await response.text();
       let errorMsg = `API被拒绝 (状态码: ${response.status})`;
       try {
@@ -144,20 +151,19 @@ const callDoubaoAPI = async (endpoint, payload, timeout = 60000) => {
 
     return await response.json();
   } catch (error) {
-    if (error.name === 'AbortError') throw new Error("请求超时，请检查网络后重试");
+    if (error.name === 'AbortError') throw new Error("请求超过了等待时间，网络可能卡住了");
     console.error("网络请求底层错误:", error);
     throw error;
   }
 };
 
 // ==========================================
-// 🧠 AI 功能实现 (极速提效版)
+// 🧠 AI 功能实现 (极限压缩防超时版)
 // ==========================================
 const generateRelatedWords = async (word, mode = 'default') => {
   const cacheKey = `${mode}_${word}`;
   if (cache.relatedWords.has(cacheKey)) return cache.relatedWords.get(cacheKey);
 
-  // 【极致压缩 Prompt 和结构】：采用缩写 w/e 代替 word/en，节省大量 Tokens
   let systemPrompt = "";
   if (mode === 'default') {
     systemPrompt = `发散“${word}”的7个网感词。严格JSON数组:[{"w":"词","e":"英文"}]`;
@@ -172,8 +178,8 @@ const generateRelatedWords = async (word, mode = 'default') => {
   const payload = {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: systemPrompt }],
-    temperature: 0.8, // 略微调高发散度，有助于模型快速跳出常规词
-    max_tokens: 150, // 极限压低 Token
+    temperature: 0.8,
+    max_tokens: 150, 
     response_format: { type: "json_object" }
   };
 
@@ -189,7 +195,6 @@ const generateRelatedWords = async (word, mode = 'default') => {
       throw new Error("AI 返回了无法解析的错误格式数据");
     }
 
-    // 兼容原有的字或者极致压缩的 w/e 属性
     const arrayData = rawArray.map(item => ({
       word: item.w || item.word || item.中文 || "未知",
       en: item.e || item.en || item.英文 || "unknown"
@@ -213,19 +218,18 @@ const generateCreativeIdea = async (words) => {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.8,
-    max_tokens: 200 // 压缩字数提速
+    max_tokens: 200 
   });
   const data = result.choices[0].message.content;
   cache.creativeIdeas.set(key, data);
   return data;
 };
 
-// 跨界碰撞模式
 const generateCrossoverInsight = async (words) => {
   const key = words.sort().join(',');
   if (cache.connections.has(key)) return cache.connections.get(key);
 
-  const prompt = `强制跨界关联：${words.join(', ')}。输出3个极具颠覆性的产品或营销点子，100字内，拒绝废话。`;
+  const prompt = `强制跨界关联：${words.join(', ')}。输出3个极具颠覆性的产品或营销点子，150字内，拒绝废话。`;
   
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
@@ -240,32 +244,31 @@ const generateCrossoverInsight = async (words) => {
 
 // 目标收敛模式（策略分类）
 const generateConvergence = async (goal, allWordsStr) => {
-  const prompt = `目标：“${goal}”。\n从以下词库筛选最核心的10个词并分2-3类：${allWordsStr}。\n直接输出美观排版的聚类结果，控制在200字内。`;
+  const prompt = `目标：“${goal}”。\n从以下词库筛选最核心词汇并分2类：${allWordsStr}。\n直接输出美观排版的聚类结果，不用废话，控制在200字内。`;
   
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.5,
-    max_tokens: 300 
+    max_tokens: 250 
   });
   return result.choices[0].message.content;
 };
 
-// 目标收敛模式（文生图高维提示词）
+// 目标收敛模式（文生图完整提示词）
 const generateConvergenceImagePrompt = async (goal, wordsStr) => {
   const cacheKey = `${goal}_${wordsStr}`;
   if (cache.imagePrompts.has(cacheKey)) return cache.imagePrompts.get(cacheKey);
 
-  // 【优化提速】让模型直接写短语，而不是长句子，显著减少耗时
-  const prompt = `为“${goal}”及词汇“${wordsStr}”写中英双语配图提示词。
-必须包含8个维度：主体,风格,光影,材质,构图,配色,质感,环境（用词组即可，拒绝长句）。
-最后单独用<english_prompt>标签包裹纯英文完整Prompt。`;
+  const prompt = `为“${goal}”及关联词“${wordsStr}”写中英双语配图提示词。
+须包含8个维度：主体,风格,光影,材质,构图,配色,质感,环境(仅输出词组)。
+结尾用<english_prompt>包裹纯英文完整Prompt。拒绝废话！`;
 
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.6,
-    max_tokens: 500 // 下调最大 Token
+    max_tokens: 400 
   });
   const data = result.choices[0].message.content.trim();
   cache.imagePrompts.set(cacheKey, data);
@@ -674,6 +677,7 @@ export default function BrainstormApp() {
     }
   };
 
+  // ========== 🚀 终极优化的收敛聚合逻辑 (串行防超时，强制降频) ==========
   const handleRunConvergence = async () => {
     if (!convergenceGoal.trim()) return;
     setIsGeneratingConvergence(true);
@@ -684,21 +688,29 @@ export default function BrainstormApp() {
     // 优先使用选中的词语，如果没有选中则使用全图词语
     const selectedNodes = nodes.filter(n => n.isSelected);
     const targetNodes = selectedNodes.length > 0 ? selectedNodes : nodes;
-    const allWordsStr = targetNodes.map(n => n.text).join('、');
+    
+    // ⚠️ 极其重要的字数熔断：如果画布上有成百上千个词，AI并发必死。
+    // 我们强制最多只截取前 12 个核心词汇发送给大模型，极大降低处理时长。
+    const maxWords = 12;
+    const allWordsStr = targetNodes.slice(0, maxWords).map(n => n.text).join('、');
     
     try {
-      // 第一阶段：先生成策略（速度快），立即显示，避免超时白屏阻塞！
-      const strategyPromise = generateConvergence(convergenceGoal.trim(), allWordsStr);
-      const promptPromise = generateConvergenceImagePrompt(convergenceGoal.trim(), allWordsStr);
-
-      const strategyResult = await strategyPromise;
+      // 步骤 1：先串行生成策略（必须等这步完全成功，才开始下一步）
+      const strategyResult = await generateConvergence(convergenceGoal.trim(), allWordsStr);
       setGeneratedConvergence(strategyResult);
-      setIsGeneratingConvergence(false); // 策略出来后，立马关掉全屏 Loader
+      setIsGeneratingConvergence(false); // ✅ 第一阶段结束，解除界面的转圈锁定
 
-      // 第二阶段：后台静默等待提示词结果，避免并发或大文本引发的 Timeout 体验
-      const promptResult = await promptPromise;
-      setConvergencePrompt(promptResult);
+      // 步骤 2：策略出来后，后台再去安全地请求高维配图提示词
+      try {
+        const promptResult = await generateConvergenceImagePrompt(convergenceGoal.trim(), allWordsStr);
+        setConvergencePrompt(promptResult);
+      } catch (promptErr) {
+        console.error("提示词生成失败:", promptErr);
+        setConvergencePrompt(`❌ 提示词请求被阻断或超时: ${promptErr.message}`);
+      }
+
     } catch (err) {
+      // 如果步骤 1 就挂了，捕获错误
       setError(`收敛聚合失败: ${err.message}`);
       setIsGeneratingConvergence(false);
     }
@@ -923,7 +935,7 @@ export default function BrainstormApp() {
       </div>
 
       {/* ========================================== */}
-      {/* 🎯 目标收敛模态框 (包含文生图提示词生成，已优化超时体验) */}
+      {/* 🎯 目标收敛模态框 (包含文生图提示词生成，彻底防并发超时) */}
       {/* ========================================== */}
       {isConvergenceModalOpen && (
         <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -957,7 +969,7 @@ export default function BrainstormApp() {
               ) : isGeneratingConvergence ? (
                 <div className="flex flex-col items-center justify-center py-20 text-cyan-400 gap-5">
                   <Loader2 className="animate-spin" size={50} />
-                  <p className="animate-pulse text-lg">正在极速提取核心策略并整理分类...</p>
+                  <p className="animate-pulse text-lg">正在极速提取核心策略并整理分类 (1/2)...</p>
                 </div>
               ) : (
                 <div className="flex flex-col md:flex-row gap-8">
@@ -981,7 +993,7 @@ export default function BrainstormApp() {
                       <div className="text-purple-400 font-medium flex items-center gap-2">
                         <ImageIcon size={18} /> 高维概念配图提示词 (Prompt)
                       </div>
-                      {convergencePrompt && (
+                      {convergencePrompt && !convergencePrompt.includes("生成中") && !convergencePrompt.includes("❌") && (
                         <button onClick={() => {
                           const cleanPrompt = convergencePrompt.replace(/<english_prompt>|<\/english_prompt>/gi, '').trim();
                           navigator.clipboard.writeText(cleanPrompt);
@@ -993,14 +1005,22 @@ export default function BrainstormApp() {
                         </button>
                       )}
                     </div>
+                    
                     {convergencePrompt ? (
-                      <div className="font-mono text-xs text-white/80 bg-black/40 p-4 rounded-xl leading-relaxed whitespace-pre-wrap max-h-[500px] overflow-y-auto custom-scrollbar border border-white/5">
-                        {convergencePrompt.replace(/<english_prompt>|<\/english_prompt>/gi, '\n==============================\n【提供给绘图 AI 的纯英文版】\n==============================\n')}
-                      </div>
+                      convergencePrompt.includes("❌") ? (
+                        <div className="flex-1 bg-red-500/5 rounded-xl border border-red-500/20 flex flex-col gap-3 items-center justify-center min-h-[200px] p-4 text-center">
+                          <AlertCircle className="text-red-400" size={32} />
+                          <span className="text-red-400/80 text-sm">{convergencePrompt}</span>
+                        </div>
+                      ) : (
+                        <div className="font-mono text-xs text-white/80 bg-black/40 p-4 rounded-xl leading-relaxed whitespace-pre-wrap max-h-[500px] overflow-y-auto custom-scrollbar border border-white/5">
+                          {convergencePrompt.replace(/<english_prompt>|<\/english_prompt>/gi, '\n==============================\n【提供给绘图 AI 的纯英文版】\n==============================\n')}
+                        </div>
+                      )
                     ) : (
                       <div className="flex-1 bg-white/5 animate-pulse rounded-xl border border-white/5 flex flex-col gap-3 items-center justify-center min-h-[200px]">
                         <Loader2 className="animate-spin text-purple-400/50" size={24} />
-                        <span className="text-white/30 text-sm">正在后台极速生成 8大维度双语提示词...</span>
+                        <span className="text-white/30 text-sm">策略已就绪，正在后台排队生成 8大维度双语提示词 (2/2)...</span>
                       </div>
                     )}
                   </div>
