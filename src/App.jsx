@@ -244,10 +244,11 @@ const generateConvergence = async (goal, allWordsStr) => {
 };
 
 // 目标收敛模式（文生图高维提示词）
-const generateConvergenceImagePrompt = async (goal) => {
-  if (cache.imagePrompts.has(goal)) return cache.imagePrompts.get(goal);
+const generateConvergenceImagePrompt = async (goal, wordsStr) => {
+  const cacheKey = `${goal}_${wordsStr}`;
+  if (cache.imagePrompts.has(cacheKey)) return cache.imagePrompts.get(cacheKey);
 
-  const prompt = `请为核心目标概念：“${goal}”创作一段极其详细的【中英双语】文生图提示词(Prompt)。
+  const prompt = `请为核心目标概念：“${goal}”及关联词汇：“${wordsStr}”创作一段极其详细的【中英双语】文生图提示词(Prompt)。
 
 要求：
 1. 必须包含以下8个维度的详细描述（每个维度都需要中英文对照）：
@@ -265,11 +266,11 @@ const generateConvergenceImagePrompt = async (goal) => {
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.6,
-    max_tokens: 800
+    temperature: 0.7,
+    max_tokens: 1000
   });
   const data = result.choices[0].message.content.trim();
-  cache.imagePrompts.set(goal, data);
+  cache.imagePrompts.set(cacheKey, data);
   return data;
 };
 
@@ -682,13 +683,16 @@ export default function BrainstormApp() {
     setGeneratedConvergence('');
     setConvergencePrompt('');
 
-    const allWordsStr = nodes.map(n => n.text).join('、');
+    // 优先使用选中的词语，如果没有选中则使用全图词语
+    const selectedNodes = nodes.filter(n => n.isSelected);
+    const targetNodes = selectedNodes.length > 0 ? selectedNodes : nodes;
+    const allWordsStr = targetNodes.map(n => n.text).join('、');
     
     try {
-      // 并行请求：聚合策略 + 高维文生图提示词
+      // 并行请求：聚合策略 + 高维文生图提示词（基于选中词和目标）
       const [strategyResult, promptResult] = await Promise.all([
         generateConvergence(convergenceGoal.trim(), allWordsStr),
-        generateConvergenceImagePrompt(convergenceGoal.trim())
+        generateConvergenceImagePrompt(convergenceGoal.trim(), allWordsStr)
       ]);
       setGeneratedConvergence(strategyResult);
       setConvergencePrompt(promptResult);
@@ -707,6 +711,8 @@ export default function BrainstormApp() {
   };
 
   const selectedCount = nodes.filter(n => n.isSelected).length;
+  // 选中的节点数文本提示
+  const activeNodesCount = selectedCount > 0 ? selectedCount : nodes.length;
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-[#160B2A] text-white selection:bg-emerald-500/30 font-sans">
@@ -798,7 +804,7 @@ export default function BrainstormApp() {
             </li>
             <li className="flex items-center gap-3 group">
               <div className="p-1.5 bg-white/5 rounded-md border border-white/10 group-hover:bg-white/10 transition-colors"><Zap size={14} className="text-orange-400"/></div>
-              <span><b className="text-white">多选关联词：</b> 开启跨界碰撞模式</span>
+              <span><b className="text-white">多选关联词：</b> 开启跨界碰撞/收敛</span>
             </li>
           </ul>
         </div>
@@ -826,9 +832,15 @@ export default function BrainstormApp() {
 
           {nodes.length > 0 && (
             <div className="relative group">
-              <button onClick={() => setIsConvergenceModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-cyan-500 hover:to-blue-400 text-white shadow-lg shadow-cyan-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all">
+              <button onClick={() => setIsConvergenceModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-cyan-500 hover:to-blue-400 text-white shadow-lg shadow-cyan-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
                 <Target size={16} /> <span className="hidden sm:inline">收敛聚合</span>
               </button>
+              <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-cyan-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 z-50">
+                <div className="flex items-start gap-2">
+                  <Info size={16} className="text-cyan-400 shrink-0 mt-0.5" />
+                  <div>根据目标整理所选词语，并生成<span className="text-cyan-300">高维配图提示词</span>。<br/><span className="text-white/50 text-xs mt-1 block">提示：基于您右键选中的 {selectedCount > 0 ? selectedCount : '所有'} 个词汇</span></div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -839,7 +851,7 @@ export default function BrainstormApp() {
               {/* 反常识发散 Button & Tooltip */}
               <div className="relative group">
                 <button onClick={() => handleSpecificExpand('reverse')} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-pink-500 hover:to-rose-400 text-white shadow-lg shadow-rose-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
-                  <FlipHorizontal size={16} /> <span className="hidden sm:inline">反常识发散</span>
+                  <FlipHorizontal size={16} /> <span className="hidden sm:inline">反向模式</span>
                 </button>
                 <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-rose-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
                   <div className="flex items-start gap-2">
@@ -879,7 +891,7 @@ export default function BrainstormApp() {
 
           {selectedCount >= 2 && (
             <div className="relative group">
-              <button onClick={handleCrossoverInsight} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-400 hover:from-orange-400 hover:to-amber-300 text-white shadow-lg shadow-amber-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all">
+              <button onClick={handleCrossoverInsight} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-400 hover:from-orange-400 hover:to-amber-300 text-white shadow-lg shadow-amber-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
                 <Zap size={16} /> <span className="hidden sm:inline">跨界碰撞</span>
               </button>
               <div className="absolute top-full right-0 mt-2 w-72 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-amber-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 z-50">
@@ -914,7 +926,7 @@ export default function BrainstormApp() {
       {/* ========================================== */}
       {isConvergenceModalOpen && (
         <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0f172a] border border-cyan-500/30 rounded-3xl w-full max-w-5xl shadow-[0_0_80px_rgba(6,182,212,0.15)] flex flex-col overflow-hidden">
+          <div className="bg-[#0f172a] border border-cyan-500/30 rounded-3xl w-full max-w-6xl shadow-[0_0_80px_rgba(6,182,212,0.15)] flex flex-col overflow-hidden">
             <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5 shrink-0">
               <h3 className="text-xl font-bold flex items-center gap-3 text-cyan-400"><Target size={24} /> 目标收敛与高维提示词提取</h3>
               <button onClick={() => {setIsConvergenceModalOpen(false); setGeneratedConvergence(''); setConvergencePrompt(''); setConvergenceGoal('');}} className="text-white/50 hover:text-white transition-colors p-2 bg-white/5 rounded-full hover:bg-white/10"><X size={20} /></button>
@@ -924,14 +936,14 @@ export default function BrainstormApp() {
               {!generatedConvergence && !isGeneratingConvergence ? (
                 <>
                   <div className="bg-cyan-500/10 border border-cyan-500/20 p-4 rounded-xl text-cyan-100 text-sm">
-                    AI 将扫描画布上的 <b>{nodes.length}</b> 个词汇，围绕你的具体目标，自动筛选出最关联的核心词汇进行聚类，<b>并同步生成包含8大维度细节的「文生图专属提示词」</b>。
+                    AI 将基于您指定的 <b>{activeNodesCount}</b> 个关联词汇，围绕目标进行策略聚类，<b>并同步生成包含 8 大维度细节的中英双语「概念配图提示词」</b>。
                   </div>
                   <div className="flex flex-col gap-3">
-                    <label className="text-white/80 font-medium">你的最终目标是什么？</label>
+                    <label className="text-white/80 font-medium">您的最终业务/创意目标是什么？</label>
                     <textarea 
                       value={convergenceGoal}
                       onChange={(e) => setConvergenceGoal(e.target.value)}
-                      placeholder="例如：我要为一家咖啡馆做六一儿童节营销活动..."
+                      placeholder="例如：为一家宠物咖啡馆策划六一儿童节的营销活动..."
                       className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-500/50 transition-colors resize-none h-32"
                     />
                   </div>
@@ -954,7 +966,7 @@ export default function BrainstormApp() {
                       <Focus size={18} /> 
                       策略提取：<span className="text-white truncate" title={convergenceGoal}>“{convergenceGoal}”</span>
                     </div>
-                    <div className="text-white/90 leading-loose whitespace-pre-wrap text-sm font-medium h-full max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                    <div className="text-white/90 leading-loose whitespace-pre-wrap text-sm font-medium h-full max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
                       {generatedConvergence}
                     </div>
                   </div>
@@ -974,15 +986,15 @@ export default function BrainstormApp() {
                           navigator.clipboard.writeText(cleanPrompt);
                           setIsPromptCopied(true);
                           setTimeout(() => setIsPromptCopied(false), 2000);
-                        }} className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg transition-all text-xs font-medium">
+                        }} className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg transition-all text-xs font-bold">
                           {isPromptCopied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                          {isPromptCopied ? <span className="text-emerald-400">已复制</span> : '一键复制'}
+                          {isPromptCopied ? <span className="text-emerald-400">已复制纯英文版</span> : '一键复制英文 Prompt'}
                         </button>
                       )}
                     </div>
                     {convergencePrompt ? (
-                      <div className="font-mono text-xs text-white/80 bg-black/40 p-4 rounded-xl leading-relaxed whitespace-pre-wrap max-h-[400px] overflow-y-auto custom-scrollbar border border-white/5">
-                        {convergencePrompt.replace(/<english_prompt>|<\/english_prompt>/gi, '\n--- 【提供给 AI 的纯英文版】 ---\n')}
+                      <div className="font-mono text-xs text-white/80 bg-black/40 p-4 rounded-xl leading-relaxed whitespace-pre-wrap max-h-[500px] overflow-y-auto custom-scrollbar border border-white/5">
+                        {convergencePrompt.replace(/<english_prompt>|<\/english_prompt>/gi, '\n==============================\n【提供给绘图 AI 的纯英文版】\n==============================\n')}
                       </div>
                     ) : (
                       <div className="flex-1 bg-white/5 animate-pulse rounded-xl border border-white/5 flex items-center justify-center min-h-[200px]">
@@ -998,7 +1010,7 @@ export default function BrainstormApp() {
             {generatedConvergence && !isGeneratingConvergence && (
               <div className="p-6 border-t border-white/5 bg-white/5 flex justify-end">
                 <button onClick={() => {setGeneratedConvergence(''); setConvergencePrompt(''); setConvergenceGoal('');}} className="px-5 py-2 bg-black/30 hover:bg-black/50 text-white/80 rounded-xl transition-all font-medium text-sm border border-white/10">
-                  重新收敛
+                  重新输入目标
                 </button>
               </div>
             )}
