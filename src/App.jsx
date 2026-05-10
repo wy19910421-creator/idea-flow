@@ -95,7 +95,9 @@ const BinaryTreeCanvas = () => {
 // ==========================================
 const DOUBAO_API_URL = "/doubao-api";
 const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
-const DOUBAO_TEXT_MODEL = "ep-20260510210717-bgq5v"; // <-- 记得改成真实的对话模型ID！
+
+// 🔴 必改项：此处必须填入豆包的【文本对话模型】 Endpoint ID
+const DOUBAO_TEXT_MODEL = "ep-20260510220258-bx5rk"; // <-- 记得改成真实的对话模型ID！
 
 // 全网真实搜索 API Key (由环境自动注入)
 const GEMINI_API_KEY = ""; 
@@ -114,7 +116,7 @@ const cache = {
 };
 
 // ==========================================
-// 🤖 统一的豆包API调用函数 (带9秒安全熔断，防止触发 Vercel 504)
+// 🤖 统一的豆包API调用函数 (带9秒安全熔断与强化错误捕捉)
 // ==========================================
 const callDoubaoAPI = async (endpoint, payload, timeout = 9000) => {
   try {
@@ -137,12 +139,20 @@ const callDoubaoAPI = async (endpoint, payload, timeout = 9000) => {
       if (response.status === 504) {
         throw new Error("Vercel云端10秒限制拦截！由于模型生成太慢导致超时。强烈建议在火山后台换成 doubao-lite 模型。");
       }
+      
       const errorText = await response.text();
       let errorMsg = `API被拒绝 (状态码: ${response.status})`;
       try {
         const errorJson = JSON.parse(errorText);
-        if (errorJson.error?.message) errorMsg = `豆包报错: ${errorJson.error.message}`;
-      } catch (e) {}
+        if (errorJson.error?.message) {
+          errorMsg = `豆包报错: ${errorJson.error.message}`;
+        } else {
+          // 如果没有 message，但有内容，直接输出前100个字符用于排障
+          errorMsg = `豆包报错: 参数错误或模型不兼容 (${errorText.substring(0, 100)})`;
+        }
+      } catch (e) {
+        errorMsg = `豆包报错: ${errorText.substring(0, 100)}`;
+      }
       throw new Error(errorMsg);
     }
 
@@ -164,26 +174,29 @@ const generateRelatedWords = async (word, mode = 'default') => {
 
   let systemPrompt = "";
   if (mode === 'default') {
-    systemPrompt = `发散“${word}”的7个网感词。严格JSON数组:[{"w":"词","e":"英文"}]`;
+    systemPrompt = `发散“${word}”的7个网感词。严格输出纯JSON数组，格式:[{"w":"中文词","e":"英文"}]。不要输出任何markdown标记。`;
   } else if (mode === 'reverse') {
-    systemPrompt = `“${word}”的7个反差/反常识/对立词。严格JSON数组:[{"w":"词","e":"英文"}]`;
+    systemPrompt = `“${word}”的7个反差/反常识/对立词。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要输出任何markdown标记。`;
   } else if (mode === 'vertical') {
-    systemPrompt = `“${word}”的7个向下垂直细分词。严格JSON数组:[{"w":"词","e":"英文"}]`;
+    systemPrompt = `“${word}”的7个向下垂直细分词。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要输出任何markdown标记。`;
   } else if (mode === 'horizontal') {
-    systemPrompt = `“${word}”的7个同类平行概念。严格JSON数组:[{"w":"词","e":"英文"}]`;
+    systemPrompt = `“${word}”的7个同类平行概念。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要输出任何markdown标记。`;
   }
 
+  // ⚠️ 极其关键的修改：移除了 response_format: { type: "json_object" }
+  // 很多 lite 模型不支持该参数会导致 "Request id: xxx" 的直接拒绝报错。
   const payload = {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: systemPrompt }],
     temperature: 0.8,
-    max_tokens: 150, 
-    response_format: { type: "json_object" }
+    max_tokens: 150
   };
 
   try {
     const result = await callDoubaoAPI("/chat/completions", payload, 8000);
     let jsonStr = result.choices[0].message.content;
+    
+    // 强力清洗 Markdown 符号
     jsonStr = jsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
     
     const data = JSON.parse(jsonStr);
@@ -785,7 +798,6 @@ export default function BrainstormApp() {
     }
   };
 
-
   const clearCanvas = () => {
     setNodes([]);
     setIsInputCenter(true);
@@ -999,7 +1011,7 @@ export default function BrainstormApp() {
       </div>
 
       {/* ========================================== */}
-      {/* 🎯 目标收敛模态框 (全面升级：策略 + 极详提示词 + 全网搜索资讯) */}
+      {/* 🎯 目标收敛模态框 */}
       {/* ========================================== */}
       {isConvergenceModalOpen && (
         <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -1091,7 +1103,7 @@ export default function BrainstormApp() {
                     )}
                   </div>
 
-                  {/* 右栏：真实新闻资讯 (来自真实搜索引擎) */}
+                  {/* 右栏：真实新闻资讯 */}
                   <div className="flex-[3] flex flex-col gap-4 bg-white/5 p-5 rounded-2xl border border-white/5">
                     <div className="text-amber-400 font-bold pb-3 border-b border-white/10 flex items-center gap-2 text-lg">
                       <Quote size={20} /> 全网真实行业资讯
