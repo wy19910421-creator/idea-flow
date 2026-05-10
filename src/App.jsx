@@ -318,7 +318,6 @@ const fetchConvergenceNews = async (goal, wordsStr) => {
   }
 };
 
-
 // ==========================================
 // 🖱️ 画布平移缩放钩子
 // ==========================================
@@ -770,6 +769,21 @@ export default function BrainstormApp() {
   const selectedCount = nodes.filter(n => n.isSelected).length;
   const activeNodesCount = selectedCount > 0 ? selectedCount : nodes.length;
 
+  // 复制提示词功能
+  const copyPromptToClipboard = () => {
+    if (!convergencePrompt) return;
+    // 提取英文提示词部分
+    const englishPromptMatch = convergencePrompt.match(/<english_prompt>([\s\S]*?)<\/english_prompt>/);
+    const textToCopy = englishPromptMatch ? englishPromptMatch[1].trim() : convergencePrompt;
+    
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => {
+        setIsPromptCopied(true);
+        setTimeout(() => setIsPromptCopied(false), 2000);
+      })
+      .catch(() => setError("复制失败，请手动复制"));
+  };
+
   return (
     <div className="relative w-full h-screen overflow-hidden bg-[#160B2A] text-white selection:bg-emerald-500/30 font-sans">
       {/* 🔴 全局错误提示横幅 */}
@@ -880,272 +894,257 @@ export default function BrainstormApp() {
       {/* ========================================== */}
       <div className="absolute top-0 right-0 w-full p-6 flex justify-end items-start pointer-events-none z-20">
         <div className="flex flex-wrap justify-end gap-3 pointer-events-auto max-w-[70vw]">
-          <button onClick={clearCanvas} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/10 rounded-full text-sm font-medium transition-all text-white/80 hover:text-white">
-            <Trash2 size={16} /> <span className="hidden sm:inline">清空画布</span>
-          </button>
-
-          {nodes.length > 0 && (
-            <div className="relative group">
-              <button onClick={() => setIsConvergenceModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-cyan-500 hover:to-blue-400 text-white shadow-lg shadow-cyan-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
-                <Target size={16} /> <span className="hidden sm:inline">收敛聚合</span>
-              </button>
-              <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-cyan-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 z-50">
-                <div className="flex items-start gap-2">
-                  <Info size={16} className="text-cyan-400 shrink-0 mt-0.5" />
-                  <div>根据目标整理所选词语，并生成<span className="text-cyan-300">高维配图提示词及全网真实资讯</span>。<br/><span className="text-white/50 text-xs mt-1 block">提示：基于您右键选中的 {selectedCount > 0 ? selectedCount : '所有'} 个词汇</span></div>
-                </div>
-              </div>
-            </div>
-          )}
-
+          {/* 多维发散按钮组 (选中1个节点时显示) */}
           {selectedCount === 1 && (
-            <>
-              <div className="h-8 w-px bg-white/20 my-auto mx-2 hidden sm:block"></div>
-              
-              <div className="relative group">
-                <button onClick={() => handleSpecificExpand('reverse')} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-pink-500 hover:to-rose-400 text-white shadow-lg shadow-rose-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
-                  <FlipHorizontal size={16} /> <span className="hidden sm:inline">反向模式</span>
-                </button>
-                <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-rose-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
-                  <div className="flex items-start gap-2">
-                    <Info size={16} className="text-rose-400 shrink-0 mt-0.5" />
-                    <div>生成与该词<span className="text-rose-300">对立面、反常识</span>的概念。<br/><span className="text-white/50 text-xs mt-1 block">例："夏天" → "羽绒服" "冰雕"</span></div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="relative group">
-                <button onClick={() => handleSpecificExpand('vertical')} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-indigo-500 hover:to-purple-400 text-white shadow-lg shadow-purple-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
-                  <ArrowDownToLine size={16} /> <span className="hidden sm:inline">纵向深入</span>
-                </button>
-                <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-purple-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 z-50">
-                  <div className="flex items-start gap-2">
-                    <Info size={16} className="text-purple-400 shrink-0 mt-0.5" />
-                    <div>挖掘该词的<span className="text-purple-300">底层、更细分具体</span>的节点。<br/><span className="text-white/50 text-xs mt-1 block">例："猫" → "蓝金渐层" "幼猫喂养"</span></div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="relative group">
-                <button onClick={() => handleSpecificExpand('horizontal')} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-blue-500 hover:to-indigo-400 text-white shadow-lg shadow-blue-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
-                  <ArrowRightToLine size={16} /> <span className="hidden sm:inline">横向扩展</span>
-                </button>
-                <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-indigo-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 z-50">
-                  <div className="flex items-start gap-2">
-                    <Info size={16} className="text-indigo-400 shrink-0 mt-0.5" />
-                    <div>寻找与该词<span className="text-indigo-300">同父类的平行概念</span>。<br/><span className="text-white/50 text-xs mt-1 block">例："猫" → "狗" "兔子" "仓鼠"</span></div>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {selectedCount >= 2 && (
-            <div className="relative group">
-              <button onClick={handleCrossoverInsight} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-400 hover:from-orange-400 hover:to-amber-300 text-white shadow-lg shadow-amber-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
-                <Zap size={16} /> <span className="hidden sm:inline">跨界碰撞</span>
+            <div className="flex gap-2">
+              <button onClick={() => handleSpecificExpand('reverse')} className="flex items-center gap-2 px-4 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 rounded-full text-sm font-medium text-indigo-300 transition-all hover:shadow-lg hover:shadow-indigo-500/20">
+                <FlipHorizontal size={16} /> 反差发散
               </button>
-              <div className="absolute top-full right-0 mt-2 w-72 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-amber-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 z-50">
-                <div className="flex items-start gap-2">
-                  <Info size={16} className="text-amber-400 shrink-0 mt-0.5" />
-                  <div>将选中词语<span className="text-amber-300">跨领域强制关联</span>，碰撞颠覆性点子。<br/><span className="text-white/50 text-xs mt-1 block">例："咖啡"+"航天" → "零重力咖啡杯"</span></div>
-                </div>
-              </div>
+              <button onClick={() => handleSpecificExpand('vertical')} className="flex items-center gap-2 px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/30 rounded-full text-sm font-medium text-purple-300 transition-all hover:shadow-lg hover:shadow-purple-500/20">
+                <ArrowDownToLine size={16} /> 垂直细分
+              </button>
+              <button onClick={() => handleSpecificExpand('horizontal')} className="flex items-center gap-2 px-4 py-2 bg-pink-500/20 hover:bg-pink-500/30 border border-pink-400/30 rounded-full text-sm font-medium text-pink-300 transition-all hover:shadow-lg hover:shadow-pink-500/20">
+                <ArrowRightToLine size={16} /> 平行发散
+              </button>
             </div>
           )}
 
+          {/* 创意生成按钮 (选中节点或有根节点时显示) */}
+          {activeNodesCount > 0 && (
+            <button onClick={handleGenerateIdea} className="flex items-center gap-2 px-5 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/30 rounded-full text-sm font-medium text-emerald-300 transition-all hover:shadow-lg hover:shadow-emerald-500/20">
+              <Sparkles size={16} /> 创意生成
+            </button>
+          )}
+
+          {/* 跨界碰撞按钮 (选中≥2个节点时显示) */}
+          {selectedCount >= 2 && (
+            <button onClick={handleCrossoverInsight} className="flex items-center gap-2 px-5 py-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/30 rounded-full text-sm font-medium text-amber-300 transition-all hover:shadow-lg hover:shadow-amber-500/20">
+              <Zap size={16} /> 跨界碰撞
+            </button>
+          )}
+
+          {/* 收敛聚合按钮 (有节点时显示) */}
           {nodes.length > 0 && (
-            <button onClick={handleGenerateIdea} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-white shadow-lg shadow-emerald-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all">
-              <Sparkles size={16} /> <span className="hidden sm:inline">导出创意</span>
+            <button onClick={() => setIsConvergenceModalOpen(true)} className="flex items-center gap-2 px-5 py-2 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/30 rounded-full text-sm font-medium text-rose-300 transition-all hover:shadow-lg hover:shadow-rose-500/20">
+              <Target size={16} /> 收敛聚合
+            </button>
+          )}
+
+          {/* 清空画布按钮 */}
+          {nodes.length > 0 && (
+            <button onClick={clearCanvas} className="flex items-center gap-2 px-5 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-full text-sm font-medium text-red-300 transition-all hover:shadow-lg hover:shadow-red-500/20">
+              <Trash2 size={16} /> 清空画布
             </button>
           )}
         </div>
       </div>
 
-      {/* 中心/底部输入框 */}
-      <div className={`absolute w-full flex justify-center pointer-events-none transition-all duration-700 ease-in-out z-30 ${isInputCenter ? 'top-[60%] -translate-y-1/2' : 'bottom-8'}`}>
-        <form onSubmit={handleInitialSubmit} className={`pointer-events-auto relative group flex items-center bg-[#1a0f2e]/60 backdrop-blur-xl border p-2 transition-all duration-700 ${isInputCenter ? 'w-[90%] max-w-xl rounded-[3rem] border-emerald-400/50 glowing-capsule' : 'w-[90%] max-w-md rounded-full border-white/20 shadow-emerald-500/10'}`}>
-          <input ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="输入起始词或短句，开启发散..." className="w-full bg-transparent border-none outline-none text-white px-8 py-4 placeholder:text-white/50 text-lg font-medium" />
-          <button type="submit" className={`absolute right-3 p-4 rounded-full transition-colors flex items-center justify-center ${isInputCenter ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(52,211,153,0.8)]' : 'bg-emerald-500/80 hover:bg-emerald-400 text-white p-3 right-2'}`}>
-            <Sparkles size={isInputCenter ? 24 : 20} />
-          </button>
-        </form>
+      {/* ========================================== */}
+      {/* 中央输入框 (初始显示) */}
+      {/* ========================================== */}
+      <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 transition-all duration-700 ease-in-out ${isInputCenter ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
+        <div className="w-full max-w-2xl px-8 py-10 bg-[#1a0f2e]/80 backdrop-blur-2xl rounded-3xl border border-white/10 shadow-[0_0_80px_rgba(0,0,0,0.5)]">
+          <h1 className="text-center text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-300 mb-8">
+            灵感发散引擎
+          </h1>
+          <form onSubmit={handleInitialSubmit} className="flex flex-col gap-4">
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="输入核心关键词，开启灵感之旅..."
+              className="px-6 py-4 bg-white/5 border border-white/10 rounded-full text-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+              autoFocus
+            />
+            <button
+              type="submit"
+              className="px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-full text-white font-bold text-lg shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 transition-all hover:scale-105 active:scale-95"
+            >
+              开始发散
+            </button>
+          </form>
+          <p className="mt-6 text-center text-sm text-white/50">
+            支持多维发散、跨界碰撞、创意生成、收敛聚合 | 基于火山引擎豆包大模型驱动
+          </p>
+        </div>
       </div>
 
       {/* ========================================== */}
-      {/* 🎯 目标收敛模态框 */}
+      {/* 创意生成模态框 */}
       {/* ========================================== */}
-      {isConvergenceModalOpen && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0f172a] border border-cyan-500/30 rounded-3xl w-full max-w-7xl shadow-[0_0_80px_rgba(6,182,212,0.15)] flex flex-col overflow-hidden h-[90vh]">
-            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5 shrink-0">
-              <h3 className="text-xl font-bold flex items-center gap-3 text-cyan-400">
-                <Target size={24} /> 目标收敛与多维扩展
+      {isIdeaModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="w-full max-w-2xl mx-6 bg-[#1a0f2e] rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-white/10">
+              <h3 className="text-xl font-bold text-emerald-400 flex items-center gap-2">
+                <Quote size={20} /> 创意文案生成
               </h3>
-              <button onClick={() => {setIsConvergenceModalOpen(false); setGeneratedConvergence(''); setConvergencePrompt(''); setConvergenceNews(null); setConvergenceGoal(''); setConvergenceStatus({step:0, text:''});}} className="text-white/50 hover:text-white transition-colors p-2 bg-white/5 rounded-full hover:bg-white/10"><X size={20} /></button>
+              <button onClick={() => setIsIdeaModalOpen(false)} className="text-white/50 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
             </div>
-            
-            <div className="p-6 md:p-8 overflow-y-auto flex-1 flex flex-col gap-6 custom-scrollbar">
-              {!generatedConvergence && convergenceStatus.step === 0 ? (
-                <>
-                  <div className="bg-cyan-500/10 border border-cyan-500/20 p-4 rounded-xl text-cyan-100 text-sm">
-                    AI 将基于您指定的 <b>{activeNodesCount}</b> 个关联词汇：<br/>
-                    1. 提取<b>核心策略</b><br/>
-                    2. 生成极度详尽的<b>8大维度文生图提示词</b><br/>
-                    3. 检索全网真实的<b>行业新闻资讯与案例</b>
-                  </div>
-                  <div className="flex flex-col gap-3">
-                    <label className="text-white/80 font-medium">您的最终业务/创意目标是什么？</label>
-                    <textarea 
-                      value={convergenceGoal}
-                      onChange={(e) => setConvergenceGoal(e.target.value)}
-                      placeholder="例如：为一家宠物咖啡馆策划六一儿童节的营销活动..."
-                      className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-500/50 transition-colors resize-none h-32"
-                    />
-                  </div>
-                  <div className="flex justify-end pt-2">
-                    <button onClick={handleRunConvergence} disabled={!convergenceGoal.trim()} className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                      <Focus size={18} /> 开始全方位收敛
-                    </button>
-                  </div>
-                </>
-              ) : convergenceStatus.step === 1 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-cyan-400 gap-5 h-full">
-                  <Loader2 className="animate-spin" size={50} />
-                  <p className="animate-pulse text-lg">{convergenceStatus.text}</p>
+            <div className="p-6 min-h-[200px] flex items-center justify-center">
+              {isGenerating ? (
+                <div className="flex flex-col items-center gap-4">
+                  <Loader2 size={32} className="animate-spin text-emerald-400" />
+                  <p className="text-white/70">正在生成创意文案...</p>
                 </div>
               ) : (
-                <div className="flex flex-col lg:flex-row gap-6 h-full">
-                  
-                  {/* 左栏：策略收敛 */}
-                  <div className="flex-[3] flex flex-col gap-4 bg-white/5 p-5 rounded-2xl border border-white/5">
-                    <div className="text-cyan-400 font-bold pb-3 border-b border-white/10 flex items-center gap-2 text-lg">
-                      <Focus size={20} /> 核心策略拆解
-                    </div>
-                    <div className="text-white/90 leading-loose whitespace-pre-wrap text-sm font-medium overflow-y-auto custom-scrollbar pr-2 flex-1">
-                      {generatedConvergence}
+                <div className="text-white/90 whitespace-pre-line leading-relaxed">
+                  {generatedIdea}
+                </div>
+              )}
+            </div>
+            <div className="p-4 bg-white/5 flex justify-end">
+              <button
+                onClick={() => setIsIdeaModalOpen(false)}
+                className="px-6 py-2 bg-emerald-500/80 hover:bg-emerald-600 rounded-full text-white font-medium transition-all"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* 跨界洞察模态框 */}
+      {/* ========================================== */}
+      {isInsightModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="w-full max-w-2xl mx-6 bg-[#1a0f2e] rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-white/10">
+              <h3 className="text-xl font-bold text-amber-400 flex items-center gap-2">
+                <Zap size={20} /> 跨界碰撞洞察
+              </h3>
+              <button onClick={() => setIsInsightModalOpen(false)} className="text-white/50 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 min-h-[200px] flex items-center justify-center">
+              {isGeneratingInsight ? (
+                <div className="flex flex-col items-center gap-4">
+                  <Loader2 size={32} className="animate-spin text-amber-400" />
+                  <p className="text-white/70">正在生成跨界洞察...</p>
+                </div>
+              ) : (
+                <div className="text-white/90 whitespace-pre-line leading-relaxed">
+                  {generatedInsight}
+                </div>
+              )}
+            </div>
+            <div className="p-4 bg-white/5 flex justify-end">
+              <button
+                onClick={() => setIsInsightModalOpen(false)}
+                className="px-6 py-2 bg-amber-500/80 hover:bg-amber-600 rounded-full text-white font-medium transition-all"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* 收敛聚合模态框 */}
+      {/* ========================================== */}
+      {isConvergenceModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="w-full max-w-4xl mx-6 bg-[#1a0f2e] rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-white/10">
+              <h3 className="text-xl font-bold text-rose-400 flex items-center gap-2">
+                <Target size={20} /> 策略收敛聚合
+              </h3>
+              <button onClick={() => setIsConvergenceModalOpen(false)} className="text-white/50 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-6">
+                <label className="block text-white/80 mb-2 text-sm font-medium">收敛目标</label>
+                <input
+                  type="text"
+                  value={convergenceGoal}
+                  onChange={(e) => setConvergenceGoal(e.target.value)}
+                  placeholder="输入收敛目标，例如：新品营销方案、产品定位策略..."
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                />
+              </div>
+              
+              <button
+                onClick={handleRunConvergence}
+                disabled={!convergenceGoal.trim() || convergenceStatus.step > 0}
+                className="px-6 py-3 bg-rose-500/80 hover:bg-rose-600 rounded-full text-white font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed mb-6"
+              >
+                {convergenceStatus.step > 0 ? `${convergenceStatus.text} (${convergenceStatus.step}/4)` : '开始收敛聚合'}
+              </button>
+
+              {/* 收敛结果展示 */}
+              {convergenceStatus.step >= 1 && (
+                <div className="space-y-6">
+                  {/* 核心策略聚类 */}
+                  <div className="bg-white/5 rounded-xl p-5 border border-white/10">
+                    <h4 className="text-lg font-bold text-rose-400 mb-3 flex items-center gap-2">
+                      <Focus size={18} /> 核心策略聚类
+                    </h4>
+                    <div className="text-white/90 whitespace-pre-line leading-relaxed">
+                      {generatedConvergence || '加载中...'}
                     </div>
                   </div>
 
-                  {/* 中栏：高维提示词 */}
-                  <div className="flex-[4] flex flex-col gap-4 bg-white/5 p-5 rounded-2xl border border-white/5 relative">
-                     <div className="flex justify-between items-center pb-3 border-b border-white/10">
-                      <div className="text-purple-400 font-bold flex items-center gap-2 text-lg">
-                        <ImageIcon size={20} /> 极详配图提示词
+                  {/* AI绘画提示词 */}
+                  {convergenceStatus.step >= 2 && (
+                    <div className="bg-white/5 rounded-xl p-5 border border-white/10 relative">
+                      <h4 className="text-lg font-bold text-purple-400 mb-3 flex items-center gap-2">
+                        <ImageIcon size={18} /> 高维配图提示词
+                      </h4>
+                      <div className="text-white/90 whitespace-pre-line leading-relaxed max-h-[300px] overflow-y-auto pr-2">
+                        {convergencePrompt || '加载中...'}
                       </div>
-                      {convergencePrompt && !convergencePrompt.includes("❌") && convergenceStatus.step > 1 && (
-                        <button onClick={() => {
-                          const cleanPrompt = convergencePrompt.replace(/<english_prompt>|<\/english_prompt>/gi, '').trim();
-                          navigator.clipboard.writeText(cleanPrompt);
-                          setIsPromptCopied(true);
-                          setTimeout(() => setIsPromptCopied(false), 2000);
-                        }} className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg transition-all text-xs font-bold shrink-0">
-                          {isPromptCopied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                          {isPromptCopied ? <span className="text-emerald-400">已复制英文</span> : '一键复制 Prompt'}
-                        </button>
+                      <button
+                        onClick={copyPromptToClipboard}
+                        className="absolute top-5 right-5 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all"
+                        title="复制英文提示词"
+                      >
+                        {isPromptCopied ? <Check size={16} className="text-green-400" /> : <Copy size={16} className="text-white/70" />}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 行业资讯 */}
+                  {convergenceStatus.step >= 3 && (
+                    <div className="bg-white/5 rounded-xl p-5 border border-white/10">
+                      <h4 className="text-lg font-bold text-blue-400 mb-3 flex items-center gap-2">
+                        <Info size={18} /> 全网行业资讯
+                      </h4>
+                      <div className="text-white/90 whitespace-pre-line leading-relaxed">
+                        {convergenceNews?.text || '加载中...'}
+                      </div>
+                      {convergenceNews?.error && (
+                        <p className="mt-2 text-red-400 text-sm">⚠️ 请确保模型已开启联网搜索插件</p>
                       )}
                     </div>
-                    
-                    {convergencePrompt ? (
-                      convergencePrompt.includes("❌") ? (
-                        <div className="flex-1 bg-red-500/5 rounded-xl border border-red-500/20 flex flex-col gap-3 items-center justify-center p-4 text-center">
-                          <AlertCircle className="text-red-400" size={32} />
-                          <span className="text-red-400/80 text-sm">{convergencePrompt}</span>
-                        </div>
-                      ) : (
-                        <div className="font-mono text-[13px] text-white/80 leading-relaxed whitespace-pre-wrap overflow-y-auto custom-scrollbar pr-2 flex-1 bg-black/20 p-4 rounded-xl">
-                          {convergencePrompt.replace(/<english_prompt>|<\/english_prompt>/gi, '\n==============================\n【纯英文 Prompt 提取区】\n==============================\n')}
-                        </div>
-                      )
-                    ) : (
-                      <div className="flex-1 bg-black/20 rounded-xl border border-white/5 flex flex-col gap-3 items-center justify-center p-6 text-center">
-                        <Loader2 className="animate-spin text-purple-400/50" size={28} />
-                        <span className="text-purple-300/60 text-sm font-medium">{convergenceStatus.text}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 右栏：真实新闻资讯 */}
-                  <div className="flex-[3] flex flex-col gap-4 bg-white/5 p-5 rounded-2xl border border-white/5">
-                    <div className="text-amber-400 font-bold pb-3 border-b border-white/10 flex items-center gap-2 text-lg">
-                      <Quote size={20} /> 全网真实行业资讯
-                    </div>
-                    
-                    {convergenceNews ? (
-                        convergenceNews.error ? (
-                           <div className="flex-1 bg-red-500/5 rounded-xl border border-red-500/20 flex flex-col gap-3 items-center justify-center p-4 text-center">
-                            <AlertCircle className="text-red-400" size={32} />
-                            <span className="text-red-400/80 text-sm">{convergenceNews.text}</span>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-4 h-full flex-1">
-                            <div className="text-white/80 leading-loose whitespace-pre-wrap text-sm overflow-y-auto custom-scrollbar pr-2 flex-1">
-                               {convergenceNews.text}
-                            </div>
-                          </div>
-                        )
-                    ) : convergenceStatus.step >= 3 ? (
-                        <div className="flex-1 bg-black/20 rounded-xl border border-white/5 flex flex-col gap-3 items-center justify-center p-6 text-center">
-                          <Loader2 className="animate-spin text-amber-400/50" size={28} />
-                          <span className="text-amber-300/60 text-sm font-medium">{convergenceStatus.text}</span>
-                        </div>
-                    ) : (
-                        <div className="flex-1 bg-black/20 rounded-xl border border-white/5 flex flex-col gap-3 items-center justify-center p-6 text-center opacity-50">
-                           <span className="text-white/30 text-sm">等待前方任务生成完毕...</span>
-                        </div>
-                    )}
-                  </div>
-
+                  )}
                 </div>
               )}
             </div>
             
-            {/* 底部按钮 */}
-            {generatedConvergence && convergenceStatus.step === 4 && (
-              <div className="p-4 border-t border-white/5 bg-white/5 flex justify-end shrink-0">
-                <button onClick={() => {setGeneratedConvergence(''); setConvergencePrompt(''); setConvergenceNews(null); setConvergenceGoal(''); setConvergenceStatus({step:0, text:''});}} className="px-5 py-2 bg-black/30 hover:bg-black/50 text-white/80 rounded-xl transition-all font-medium text-sm border border-white/10">
-                  重新输入目标
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 创意文案模态框 */}
-      {isIdeaModalOpen && (
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1e1136] border border-white/10 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
-            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5"><h3 className="text-xl font-bold flex items-center gap-2 text-amber-400"><Sparkles size={20} /> 创意文案生成</h3><button onClick={() => setIsIdeaModalOpen(false)} className="text-white/50 hover:text-white transition-colors"><X size={24} /></button></div>
-            <div className="p-8 overflow-y-auto flex-1 text-white/90 leading-relaxed whitespace-pre-wrap text-lg">
-              {isGenerating ? <div className="flex flex-col items-center justify-center py-12 text-emerald-400 gap-4"><Loader2 className="animate-spin" size={40} /><p className="animate-pulse">AI正在将您的灵感火花串联...</p></div> : <p>{generatedIdea}</p>}
-            </div>
-            {!isGenerating && <div className="p-6 border-t border-white/5 bg-black/20 flex justify-end gap-3"><button onClick={() => navigator.clipboard.writeText(generatedIdea)} className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors font-medium"><Download size={18} /> 复制文案</button></div>}
-          </div>
-        </div>
-      )}
-
-      {/* 跨界碰撞模态框 */}
-      {isInsightModalOpen && (
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#2a1325] border border-orange-500/20 rounded-3xl w-full max-w-md shadow-[0_0_50px_rgba(249,115,22,0.15)] overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5"><h3 className="text-xl font-bold flex items-center gap-2 text-orange-400"><Zap size={20} /> 颠覆性跨界碰撞</h3><button onClick={() => setIsInsightModalOpen(false)} className="text-white/50 hover:text-white transition-colors"><X size={24} /></button></div>
-            <div className="p-8 overflow-y-auto text-white/90 leading-relaxed whitespace-pre-wrap text-base font-medium">
-              {isGeneratingInsight ? <div className="flex flex-col items-center justify-center py-8 text-orange-400 gap-4"><Loader2 className="animate-spin" size={40} /><p className="animate-pulse">正在寻找词语间的颠覆性联系...</p></div> : <div className="border-l-4 border-orange-500/50 pl-4 py-2"><p>{generatedInsight}</p></div>}
+            <div className="p-4 bg-white/5 flex justify-end">
+              <button
+                onClick={() => {
+                  setIsConvergenceModalOpen(false);
+                  setConvergenceStatus({ step: 0, text: '' });
+                }}
+                className="px-6 py-2 bg-rose-500/80 hover:bg-rose-600 rounded-full text-white font-medium transition-all"
+              >
+                关闭
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes dash { to { stroke-dashoffset: -12; } }
-        @keyframes capsule-glow { 0%, 100% { box-shadow: 0 0 30px rgba(52,211,153,0.3), inset 0 0 20px rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.4); } 50% { box-shadow: 0 0 60px rgba(52,211,153,0.7), inset 0 0 40px rgba(52,211,153,0.3); border-color: rgba(52,211,153,0.9); } }
-        .glowing-capsule { animation: capsule-glow 3s ease-in-out infinite; }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
-      `}} />
     </div>
   );
 }
