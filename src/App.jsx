@@ -97,6 +97,7 @@ const DOUBAO_API_URL = "/doubao-api";
 const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
 
 // 🔴 必改项：此处必须填入豆包的【文本对话模型】 Endpoint ID
+// ⚡ 强烈建议：为了体验秒出、防止 Vercel 504 超时，请务必在后台创建一个 "doubao-lite-4k" 模型填入下方！
 const DOUBAO_TEXT_MODEL = "ep-20260510220258-bx5rk"; // <-- 记得改成真实的对话模型ID！
 
 // 全网真实搜索 API Key (由环境自动注入)
@@ -138,6 +139,9 @@ const callDoubaoAPI = async (endpoint, payload, timeout = 9000) => {
     if (!response.ok) {
       if (response.status === 504) {
         throw new Error("Vercel云端10秒限制拦截！由于模型生成太慢导致超时。强烈建议在火山后台换成 doubao-lite 模型。");
+      }
+      if (response.status === 429) {
+        throw new Error("并发请求太多被限流啦，请稍微等几秒钟再试哦。");
       }
       
       const errorText = await response.text();
@@ -183,8 +187,6 @@ const generateRelatedWords = async (word, mode = 'default') => {
     systemPrompt = `“${word}”的7个同类平行概念。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要输出任何markdown标记。`;
   }
 
-  // ⚠️ 极其关键的修改：移除了 response_format: { type: "json_object" }
-  // 很多 lite 模型不支持该参数会导致 "Request id: xxx" 的直接拒绝报错。
   const payload = {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: systemPrompt }],
@@ -270,28 +272,28 @@ const generateConvergenceImagePrompt = async (goal, wordsStr) => {
   const cacheKey = `${goal}_${wordsStr}`;
   if (cache.imagePrompts.has(cacheKey)) return cache.imagePrompts.get(cacheKey);
 
-  const prompt = `你是一位顶级的原画师和摄影指导。为目标：“${goal}”及关联词“${wordsStr}”写一段【极度详细、画面感极强】的中英双语配图提示词。
+  const prompt = `你是一位顶级的原画师和AI绘画提示词专家。请为目标：“${goal}”及关联词“${wordsStr}”写一段【极度详细、画面感极强】的中英双语配图提示词。
 
-必须详尽描述这8个维度：
-1. 主体 (Subject)：详细描述人物神态、动作、特征。
-2. 风格 (Style)：如 Cyberpunk, Photorealistic 等。
-3. 光影 (Lighting)：如 伦勃朗光, 柔和丁达尔光效。
-4. 材质 (Material)：如 粗糙的亚麻布, 泛着冷光的金属。
-5. 构图 (Composition)：如 黄金分割, 仰视特写。
-6. 配色 (Color Palette)：明确主色调和点缀色。
-7. 质感 (Texture)：如 8k分辨率, 电影级画质, 细腻皮肤纹理。
-8. 环境 (Environment)：环境背景的详细布局。
+要求必须包含且细致描述以下8个维度（拒绝粗糙，要像摄影指导一样给出细节）：
+1. 主体 (Subject)：不要只说“一个人”，要描述他的神态、动作、穿着特征。
+2. 风格 (Style)：如 Cyberpunk, Photorealistic, Oil painting, Studio Ghibli 等。
+3. 光影 (Lighting)：如 伦勃朗光, 赛博朋克霓虹光, 柔和丁达尔光效 等。
+4. 材质 (Material)：如 粗糙的亚麻布, 泛着冷光的金属, 晶莹剔透的玻璃。
+5. 构图 (Composition)：如 黄金分割, 对称构图, 仰视特写 (Low angle close-up)。
+6. 配色 (Color Palette)：明确主色调和点缀色，如 莫兰迪色系, 赛博朋克蓝紫对比。
+7. 质感 (Texture)：如 8k分辨率, 电影级画质, 极其细腻的皮肤纹理。
+8. 环境 (Environment)：如 充满赛博细节的未来街道, 阳光倾洒的温馨咖啡馆角落。
 
-格式：
-- 前面中文解析。
-- 结尾单独用 <english_prompt> 包裹纯英文完整Prompt。`;
+格式要求：
+- 前半部分为中文解析。
+- 结尾必须单独用 <english_prompt> 标签包裹一段极其专业、可直接供 Midjourney/Stable Diffusion 调用的纯英文完整 Prompt。不能有任何多余废话。`;
 
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.7,
-    max_tokens: 600
-  }, 12000); // 提示词给长一点时间
+    max_tokens: 800
+  }, 12000); 
   const data = result.choices[0].message.content.trim();
   cache.imagePrompts.set(cacheKey, data);
   return data;
