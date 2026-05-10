@@ -94,9 +94,9 @@ const BinaryTreeCanvas = () => {
 // 🚀 火山引擎豆包 API 配置
 // ==========================================
 // 修复点：将相对路径修改为完整的火山引擎官方接口地址，避免 Failed to parse URL 错误
-const DOUBAO_API_URL = "https://ark.cn-beijing.volces.com/api/v3";
+const DOUBAO_API_URL = "/doubao-api";
 const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
-const DOUBAO_TEXT_MODEL = "ep-20260510220258-bx5rk"; 
+const DOUBAO_TEXT_MODEL = "ep-20260510210717-bgq5v"; 
 
 // ==========================================
 // 📦 全局缓存
