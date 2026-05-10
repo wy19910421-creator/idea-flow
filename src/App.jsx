@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Sparkles, Download, Trash2, X, Loader2, Maximize, MousePointer2, Zap, Quote, Copy, Check, AlertCircle, BookOpen, Target, FlipHorizontal, ArrowDownToLine, ArrowRightToLine, Focus, Info, Image as ImageIcon } from 'lucide-react';
+import { Sparkles, Download, Trash2, History, X, Loader2, Maximize, MousePointer2, Zap, Quote, Copy, Check, AlertCircle, BookOpen, Target, FlipHorizontal, ArrowDownToLine, ArrowRightToLine, Focus, Info, Image as ImageIcon } from 'lucide-react';
 
 // ==========================================
 // 🌌 二进制树画布动画组件
@@ -97,8 +97,9 @@ const DOUBAO_API_URL = "/doubao-api";
 const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
 
 // 🔴 必改项：此处必须填入豆包的【文本对话模型】 Endpoint ID
-// ⚡ 如果您需要真正的联网搜索，请务必在火山引擎创建一个"智能体"，开启"联网搜索"插件，并将该智能体的 Endpoint ID 填入下方！
-const DOUBAO_TEXT_MODEL = "ep-20260510220258-bx5rk"; // <-- 记得改成真实的模型ID！
+// ⚡ 强烈建议：为了体验秒出、防止 Vercel 504 超时，请务必在后台创建一个 "doubao-lite-4k" 模型填入下方！
+const DOUBAO_TEXT_MODEL = "ep-20260510210717-bgq5v"; // <-- 记得改成真实的对话模型ID！
+
 
 // ==========================================
 // 📦 全局缓存
@@ -108,15 +109,13 @@ const cache = {
   creativeIdeas: new Map(),
   connections: new Map(),
   convergences: new Map(),
-  imagePrompts: new Map(),
-  news: new Map() 
+  imagePrompts: new Map()
 };
 
 // ==========================================
-// 🤖 统一的豆包API调用函数 
+// 🤖 统一的豆包API调用函数 (新增精准超时拦截)
 // ==========================================
-// 超时时间放宽至 30 秒，防止正常的大段文本生成被误杀
-const callDoubaoAPI = async (endpoint, payload, timeout = 30000) => {
+const callDoubaoAPI = async (endpoint, payload, timeout = 60000) => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -135,61 +134,58 @@ const callDoubaoAPI = async (endpoint, payload, timeout = 30000) => {
 
     if (!response.ok) {
       if (response.status === 504) {
-        throw new Error("Vercel云端10秒限制拦截！由于模型生成太慢导致超时。强烈建议在火山后台换成 doubao-lite 模型。");
+        throw new Error("Vercel云端10秒限制拦截！请在火山后台把模型换成更快的 doubao-lite 试试。");
       }
       if (response.status === 429) {
-        throw new Error("并发请求被限流，请稍等几秒钟再试。");
+        throw new Error("并发请求太多被限流啦，请稍微等几秒钟再试哦。");
       }
       
       const errorText = await response.text();
       let errorMsg = `API被拒绝 (状态码: ${response.status})`;
       try {
         const errorJson = JSON.parse(errorText);
-        if (errorJson.error?.message) {
-          errorMsg = `豆包报错: ${errorJson.error.message}`;
-        }
+        if (errorJson.error?.message) errorMsg = `豆包报错: ${errorJson.error.message}`;
       } catch (e) {}
       throw new Error(errorMsg);
     }
 
     return await response.json();
   } catch (error) {
-    if (error.name === 'AbortError') throw new Error("大模型响应超时，请检查网络，或尝试换用更快的 Lite 模型。");
+    if (error.name === 'AbortError') throw new Error("请求超过了等待时间，网络可能卡住了");
     console.error("网络请求底层错误:", error);
     throw error;
   }
 };
 
 // ==========================================
-// 🧠 AI 功能实现
+// 🧠 AI 功能实现 (极限压缩防超时版)
 // ==========================================
-
 const generateRelatedWords = async (word, mode = 'default') => {
   const cacheKey = `${mode}_${word}`;
   if (cache.relatedWords.has(cacheKey)) return cache.relatedWords.get(cacheKey);
 
   let systemPrompt = "";
   if (mode === 'default') {
-    systemPrompt = `发散“${word}”的7个网感词。严格输出纯JSON数组，格式:[{"w":"中文词","e":"英文"}]。不要任何markdown标记。`;
+    systemPrompt = `发散“${word}”的7个网感词。严格JSON数组:[{"w":"词","e":"英文"}]`;
   } else if (mode === 'reverse') {
-    systemPrompt = `“${word}”的7个反差/反常识/对立词。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要任何markdown标记。`;
+    systemPrompt = `“${word}”的7个反差/反常识/对立词。严格JSON数组:[{"w":"词","e":"英文"}]`;
   } else if (mode === 'vertical') {
-    systemPrompt = `“${word}”的7个向下垂直细分词。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要任何markdown标记。`;
+    systemPrompt = `“${word}”的7个向下垂直细分词。严格JSON数组:[{"w":"词","e":"英文"}]`;
   } else if (mode === 'horizontal') {
-    systemPrompt = `“${word}”的7个同类平行概念。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要任何markdown标记。`;
+    systemPrompt = `“${word}”的7个同类平行概念。严格JSON数组:[{"w":"词","e":"英文"}]`;
   }
 
   const payload = {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: systemPrompt }],
     temperature: 0.8,
-    max_tokens: 150
+    max_tokens: 150, 
+    response_format: { type: "json_object" }
   };
 
   try {
-    const result = await callDoubaoAPI("/chat/completions", payload, 15000);
+    const result = await callDoubaoAPI("/chat/completions", payload);
     let jsonStr = result.choices[0].message.content;
-    
     jsonStr = jsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
     
     const data = JSON.parse(jsonStr);
@@ -207,6 +203,7 @@ const generateRelatedWords = async (word, mode = 'default') => {
     cache.relatedWords.set(cacheKey, arrayData);
     return arrayData;
   } catch (error) {
+    console.error(`解析或生成错误 (${mode}):`, error);
     throw error;
   }
 };
@@ -222,7 +219,7 @@ const generateCreativeIdea = async (words) => {
     messages: [{ role: "user", content: prompt }],
     temperature: 0.8,
     max_tokens: 200 
-  }, 15000);
+  });
   const data = result.choices[0].message.content;
   cache.creativeIdeas.set(key, data);
   return data;
@@ -232,91 +229,52 @@ const generateCrossoverInsight = async (words) => {
   const key = words.sort().join(',');
   if (cache.connections.has(key)) return cache.connections.get(key);
 
-  const prompt = `强制跨界关联：${words.join(', ')}。输出3个极具颠覆性的产品或营销点子，100字内，拒绝废话。`;
+  const prompt = `强制跨界关联：${words.join(', ')}。输出3个极具颠覆性的产品或营销点子，150字内，拒绝废话。`;
   
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.9,
     max_tokens: 200 
-  }, 15000);
+  });
   const data = result.choices[0].message.content;
   cache.connections.set(key, data);
   return data;
 };
 
+// 目标收敛模式（策略分类）
 const generateConvergence = async (goal, allWordsStr) => {
-  const prompt = `目标：“${goal}”。\n从以下词汇筛选最核心要素并分2类：${allWordsStr}。\n直接输出排版美观的聚类结果，拒绝废话，限150字内。`;
+  const prompt = `目标：“${goal}”。\n从以下词库筛选最核心词汇并分2类：${allWordsStr}。\n直接输出美观排版的聚类结果，不用废话，控制在200字内。`;
   
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.5,
     max_tokens: 250 
-  }, 20000);
+  });
   return result.choices[0].message.content;
 };
 
+// 目标收敛模式（文生图完整提示词）
 const generateConvergenceImagePrompt = async (goal, wordsStr) => {
   const cacheKey = `${goal}_${wordsStr}`;
   if (cache.imagePrompts.has(cacheKey)) return cache.imagePrompts.get(cacheKey);
 
-  const prompt = `你是一位顶级的原画师和AI绘画提示词专家。请为目标：“${goal}”及关联词“${wordsStr}”写一段【极度详细、画面感极强】的中英双语配图提示词。
-
-要求必须包含且细致描述以下8个维度（拒绝粗糙，要像摄影指导一样给出细节）：
-1. 主体 (Subject)：不要只说“一个人”，要描述他的神态、动作、穿着特征。
-2. 风格 (Style)：如 Cyberpunk, Photorealistic, Oil painting, Studio Ghibli 等。
-3. 光影 (Lighting)：如 伦勃朗光, 赛博朋克霓虹光, 柔和丁达尔光效 等。
-4. 材质 (Material)：如 粗糙的亚麻布, 泛着冷光的金属, 晶莹剔透的玻璃。
-5. 构图 (Composition)：如 黄金分割, 对称构图, 仰视特写。
-6. 配色 (Color Palette)：明确主色调和点缀色。
-7. 质感 (Texture)：如 8k分辨率, 电影级画质, 极其细腻的皮肤纹理。
-8. 环境 (Environment)：环境背景的详细布局。
-
-格式要求：
-- 前半部分为中文解析。
-- 结尾必须单独用 <english_prompt> 标签包裹一段纯英文完整 Prompt。不能有任何多余废话。`;
+  const prompt = `为“${goal}”及关联词“${wordsStr}”写中英双语配图提示词。
+须包含8个维度：主体,风格,光影,材质,构图,配色,质感,环境(仅输出词组)。
+结尾用<english_prompt>包裹纯英文完整Prompt。拒绝废话！`;
 
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.7,
-    max_tokens: 800
-  }, 30000); 
+    temperature: 0.6,
+    max_tokens: 400 
+  });
   const data = result.choices[0].message.content.trim();
   cache.imagePrompts.set(cacheKey, data);
   return data;
 };
 
-// 🌟 真正通过豆包大模型实现检索 (需在火山控制台为模型开启搜索插件)
-const fetchConvergenceNews = async (goal, wordsStr) => {
-  const cacheKey = `${goal}_news`;
-  if (cache.news.has(cacheKey)) return cache.news.get(cacheKey);
-
-  const prompt = `如果你具备联网搜索能力，请立刻在互联网上搜索关于“${goal}”的最新行业资讯、新闻报道或真实市场案例。结合关键词语：“${wordsStr}”。
-要求：
-1. 总结出3条关键信息，必须是客观真实的互联网资讯。
-2. 请务必在回复中附上新闻的真实参考来源（媒体名称或链接）。
-3. 使用专业的中文进行回复，排版清晰。`;
-
-  try {
-    const result = await callDoubaoAPI("/chat/completions", {
-      model: DOUBAO_TEXT_MODEL,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.5,
-      max_tokens: 500
-    }, 25000); 
-    
-    const data = result.choices[0].message.content.trim();
-    // 豆包 API 通常直接将搜索来源整合在回答文本中
-    const output = { text: data, sources: [] }; 
-    cache.news.set(cacheKey, output);
-    return output;
-  } catch (error) {
-    console.error("Real News Fetch Error:", error);
-    return { text: "资讯获取失败。请确保您在火山引擎控制台中为当前填入的模型开启了【联网搜索】插件能力，或者检查网络连接。\n" + error.message, sources: [], error: true };
-  }
-};
 
 // ==========================================
 // 🖱️ 画布平移缩放钩子
@@ -393,7 +351,7 @@ const useLongPress = (callback, ms = 500) => {
 };
 
 // ==========================================
-// 🎨 节点组件
+// 🎨 节点组件 (支持自由拖拽排版)
 // ==========================================
 const Node = ({ node, isDragging, onPointerDown, onPointerMove, onPointerUp, onRightClick, onPreload }) => {
   const { id, text, en, x, y, isRoot, isSelected, isLoading, size } = node;
@@ -408,6 +366,7 @@ const Node = ({ node, isDragging, onPointerDown, onPointerMove, onPointerUp, onR
     nodeClasses += "bg-white/10 border-white/20 hover:bg-white/15 text-white/90 hover:border-white/40 ";
   }
 
+  // 如果没有处于拖拽中，才增加动画过渡，保证拖拽时顺滑跟随
   if (!isDragging) {
     nodeClasses += "transition-all duration-300 ease-out ";
   }
@@ -452,8 +411,10 @@ export default function BrainstormApp() {
   const [isInputCenter, setIsInputCenter] = useState(true);
   const [error, setError] = useState(null);
 
+  // 状态：控制左侧操作指南手册的显示/隐藏
   const [isTipsVisible, setIsTipsVisible] = useState(true);
 
+  // 节点拖拽相关状态
   const [draggedNodeId, setDraggedNodeId] = useState(null);
   const nodeDragInfo = useRef({ id: null, startX: 0, startY: 0, nodeStartX: 0, nodeStartY: 0, moved: false, longPressed: false });
   const longPressTimeout = useRef(null);
@@ -471,8 +432,7 @@ export default function BrainstormApp() {
   const [convergenceGoal, setConvergenceGoal] = useState('');
   const [generatedConvergence, setGeneratedConvergence] = useState('');
   const [convergencePrompt, setConvergencePrompt] = useState('');
-  const [convergenceNews, setConvergenceNews] = useState(null); 
-  const [convergenceStatus, setConvergenceStatus] = useState({ step: 0, text: '' }); 
+  const [isGeneratingConvergence, setIsGeneratingConvergence] = useState(false);
   const [isPromptCopied, setIsPromptCopied] = useState(false);
 
   const inputRef = useRef(null);
@@ -517,6 +477,7 @@ export default function BrainstormApp() {
     setIsInputCenter(false);
     setError(null);
     
+    // Determine position for the new root node
     let newX = 0;
     let newY = 0;
 
@@ -534,6 +495,7 @@ export default function BrainstormApp() {
     await expandNode(rootId, rootWord, 'default');
   };
 
+  // 支持多种发散模式的核心扩展函数
   const expandNode = async (nodeId, word, mode = 'default') => {
     setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, isLoading: true } : n));
     try {
@@ -546,9 +508,10 @@ export default function BrainstormApp() {
         const parent = currentNodes[parentIndex];
         parent.isLoading = false;
         parent.isExpanded = true;
-        parent.isSelected = false;
+        parent.isSelected = false; // 扩展后自动取消选中，体验更好
 
         const count = relatedData.length;
+        // 反向模式和层级模式，稍微加大扩散半径，避免与原词重叠太紧密
         const radius = mode === 'default' ? 250 : 300;
         let startAngle = 0;
         let angleRange = Math.PI * 2;
@@ -562,6 +525,7 @@ export default function BrainstormApp() {
           }
         }
 
+        // 为了不同模式稍微偏移起始角度，避免重叠
         const modeOffset = mode === 'reverse' ? 0.3 : (mode === 'vertical' ? 0.6 : (mode === 'horizontal' ? 0.9 : 0));
 
         relatedData.forEach((data, index) => {
@@ -580,7 +544,7 @@ export default function BrainstormApp() {
         return currentNodes;
       });
     } catch (err) {
-      setError(`发散失败: ${err.message}`);
+      setError(`发散节点失败: ${err.message}`);
       setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, isLoading: false, isSelected: false } : n));
     }
   };
@@ -593,8 +557,9 @@ export default function BrainstormApp() {
     setNodes(prev => prev.map(n => n.id === id ? { ...n, isSelected: !n.isSelected } : n));
   };
 
+  // --- 节点指针事件：支持拖拽和移动端长按 ---
   const handleNodePointerDown = (e, node) => {
-    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if (e.button !== 0 && e.pointerType === 'mouse') return; // 只响应左键和触屏
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     
@@ -609,6 +574,7 @@ export default function BrainstormApp() {
     };
     setDraggedNodeId(node.id);
 
+    // 移动端长按模拟右键选择
     longPressTimeout.current = setTimeout(() => {
       nodeDragInfo.current.longPressed = true;
       toggleSelectNode(node.id);
@@ -653,12 +619,14 @@ export default function BrainstormApp() {
       setDraggedNodeId(null);
       nodeDragInfo.current = { id: null, startX: 0, startY: 0, nodeStartX: 0, nodeStartY: 0, moved: false, longPressed: false };
       
+      // 没有拖动且没有长按，视为普通发散（左键）
       if (!wasMoved && !wasLongPressed) {
         if (!node.isExpanded) expandNode(node.id, node.text, 'default');
       }
     }
   };
 
+  // --- 特定模式触发器 ---
   const handleSpecificExpand = (mode) => {
     const selected = nodes.filter(n => n.isSelected);
     if (selected.length !== 1) return;
@@ -680,7 +648,7 @@ export default function BrainstormApp() {
       const idea = await generateCreativeIdea(wordsToUse);
       setGeneratedIdea(idea);
     } catch (err) {
-      setError(`创意生成失败: ${err.message}`);
+      setError(`生成创意失败: ${err.message}`);
       setGeneratedIdea("获取内容失败。");
       setIsIdeaModalOpen(false);
     } finally {
@@ -709,53 +677,42 @@ export default function BrainstormApp() {
     }
   };
 
-  // ========== 🚀 终极防超时串行收敛逻辑 (通过豆包大模型拉取资讯) ==========
+  // ========== 🚀 终极优化的收敛聚合逻辑 (串行防超时，强制降频) ==========
   const handleRunConvergence = async () => {
     if (!convergenceGoal.trim()) return;
-    
+    setIsGeneratingConvergence(true);
     setError(null);
     setGeneratedConvergence('');
     setConvergencePrompt('');
-    setConvergenceNews(null);
 
+    // 优先使用选中的词语，如果没有选中则使用全图词语
     const selectedNodes = nodes.filter(n => n.isSelected);
     const targetNodes = selectedNodes.length > 0 ? selectedNodes : nodes;
     
-    // ⚠️ 极其重要的字数熔断：强制最多截取 10 个词发给豆包
-    const maxWords = 10;
+    // ⚠️ 极其重要的字数熔断：如果画布上有成百上千个词，AI并发必死。
+    // 我们强制最多只截取前 12 个核心词汇发送给大模型，极大降低处理时长。
+    const maxWords = 12;
     const allWordsStr = targetNodes.slice(0, maxWords).map(n => n.text).join('、');
     
     try {
-      // 步骤 1：策略聚类 (阻塞 UI，必须等待完成)
-      setConvergenceStatus({ step: 1, text: '正在提取核心策略...' });
+      // 步骤 1：先串行生成策略（必须等这步完全成功，才开始下一步）
       const strategyResult = await generateConvergence(convergenceGoal.trim(), allWordsStr);
       setGeneratedConvergence(strategyResult);
-      
-      // 步骤 2：生成高维提示词 (非阻塞 UI)
-      setConvergenceStatus({ step: 2, text: '生成极详配图提示词...' });
+      setIsGeneratingConvergence(false); // ✅ 第一阶段结束，解除界面的转圈锁定
+
+      // 步骤 2：策略出来后，后台再去安全地请求高维配图提示词
       try {
         const promptResult = await generateConvergenceImagePrompt(convergenceGoal.trim(), allWordsStr);
         setConvergencePrompt(promptResult);
       } catch (promptErr) {
         console.error("提示词生成失败:", promptErr);
-        setConvergencePrompt(`❌ 提示词请求中断: ${promptErr.message}`);
+        setConvergencePrompt(`❌ 提示词请求被阻断或超时: ${promptErr.message}`);
       }
-
-      // 步骤 3：获取真实互联网资讯 (通过豆包模型搜索插件进行)
-      setConvergenceStatus({ step: 3, text: '检索全网行业资讯...' });
-      try {
-        const newsResult = await fetchConvergenceNews(convergenceGoal.trim(), allWordsStr);
-        setConvergenceNews(newsResult);
-      } catch (newsErr) {
-        console.error("资讯获取失败:", newsErr);
-        setConvergenceNews({ text: `❌ 资讯获取失败: ${newsErr.message}`, sources: [], error: true });
-      }
-
-      setConvergenceStatus({ step: 4, text: '完成' });
 
     } catch (err) {
+      // 如果步骤 1 就挂了，捕获错误
       setError(`收敛聚合失败: ${err.message}`);
-      setConvergenceStatus({ step: 0, text: '' });
+      setIsGeneratingConvergence(false);
     }
   };
 
@@ -767,22 +724,8 @@ export default function BrainstormApp() {
   };
 
   const selectedCount = nodes.filter(n => n.isSelected).length;
+  // 选中的节点数文本提示
   const activeNodesCount = selectedCount > 0 ? selectedCount : nodes.length;
-
-  // 复制提示词功能
-  const copyPromptToClipboard = () => {
-    if (!convergencePrompt) return;
-    // 提取英文提示词部分
-    const englishPromptMatch = convergencePrompt.match(/<english_prompt>([\s\S]*?)<\/english_prompt>/);
-    const textToCopy = englishPromptMatch ? englishPromptMatch[1].trim() : convergencePrompt;
-    
-    navigator.clipboard.writeText(textToCopy)
-      .then(() => {
-        setIsPromptCopied(true);
-        setTimeout(() => setIsPromptCopied(false), 2000);
-      })
-      .catch(() => setError("复制失败，请手动复制"));
-  };
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-[#160B2A] text-white selection:bg-emerald-500/30 font-sans">
@@ -813,6 +756,7 @@ export default function BrainstormApp() {
               const target = nodes.find(n => n.id === link.target);
               if (!source || !target) return null;
               
+              // 拖拽时取消连线的动画延迟，使其丝滑跟随
               const isLineDragging = draggedNodeId === link.source || draggedNodeId === link.target;
               
               return (
@@ -839,7 +783,7 @@ export default function BrainstormApp() {
       </div>
 
       {/* ========================================== */}
-      {/* 📖 左上角 TIPS 指南框 */}
+      {/* 📖 左上角 TIPS 指南框 (书本外框样式，带关闭) */}
       {/* ========================================== */}
       <div className={`absolute top-6 left-6 z-20 transition-all duration-700 ease-in-out ${isInputCenter ? 'opacity-0 translate-y-4 pointer-events-none' : (isTipsVisible ? 'opacity-90 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-4 pointer-events-none')}`}>
         <div className="bg-[#1a0f2e]/70 backdrop-blur-xl border border-white/10 border-l-[6px] border-l-emerald-500 rounded-r-2xl rounded-l-sm p-5 shadow-2xl shadow-black/50 min-w-[300px] relative">
@@ -879,337 +823,257 @@ export default function BrainstormApp() {
         </div>
       </div>
       
+      {/* 恢复指南按钮（当指南隐藏时显示） */}
       {!isInputCenter && !isTipsVisible && (
         <button 
           onClick={() => setIsTipsVisible(true)}
           className="absolute top-6 left-6 z-20 flex items-center justify-center p-3 bg-[#1a0f2e]/70 hover:bg-[#1a0f2e] backdrop-blur-xl border border-white/10 border-l-[4px] border-l-emerald-500 rounded-r-xl rounded-l-sm shadow-xl text-emerald-400 transition-all hover:scale-105"
           title="显示操作指南"
         >
-          <BookOpen size={18} />
+          <BookOpen size={20} />
         </button>
       )}
 
       {/* ========================================== */}
-      {/* 🎯 中央输入框 (初始状态) */}
+      {/* 顶部右侧导航按钮 (根据选中状态动态切换，带 Tooltip) */}
       {/* ========================================== */}
-      {isInputCenter && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-full max-w-2xl px-6">
-          <div className="bg-[#1a0f2e]/80 backdrop-blur-2xl border border-white/10 rounded-3xl p-8 shadow-[0_0_60px_rgba(0,0,0,0.5)]">
-            <div className="flex justify-center mb-6">
-              <Sparkles size={48} className="text-emerald-400 animate-pulse" />
-            </div>
-            <h1 className="text-center text-3xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-300">
-              创意脑暴可视化工具
-            </h1>
-            <p className="text-center text-white/60 mb-8 text-sm">
-              输入核心关键词，开启AI驱动的创意发散与收敛
-            </p>
-            <form onSubmit={handleInitialSubmit} className="relative">
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="输入核心关键词（例如：元宇宙、可持续时尚、AI营销）"
-                className="w-full bg-white/5 border border-white/10 focus:border-emerald-400/50 rounded-full py-4 px-6 text-lg placeholder:text-white/30 outline-none transition-all"
-              />
-              <button 
-                type="submit"
-                className="absolute right-2 top-1/2 -translate-y-1/2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full py-2 px-6 font-bold transition-all hover:shadow-[0_0_20px_rgba(52,211,153,0.5)]"
-              >
-                开始发散
+      <div className="absolute top-0 right-0 w-full p-6 flex justify-end items-start pointer-events-none z-20">
+        <div className="flex flex-wrap justify-end gap-3 pointer-events-auto max-w-[70vw]">
+          <button onClick={clearCanvas} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/10 rounded-full text-sm font-medium transition-all text-white/80 hover:text-white">
+            <Trash2 size={16} /> <span className="hidden sm:inline">清空画布</span>
+          </button>
+
+          {nodes.length > 0 && (
+            <div className="relative group">
+              <button onClick={() => setIsConvergenceModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-cyan-500 hover:to-blue-400 text-white shadow-lg shadow-cyan-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
+                <Target size={16} /> <span className="hidden sm:inline">收敛聚合</span>
               </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================== */}
-      {/* 🎛️ 顶部操作栏 */}
-      {/* ========================================== */}
-      {!isInputCenter && (
-        <div className="absolute top-6 right-6 z-30 flex items-center gap-3">
-          {/* 多维发散按钮组 */}
-          <div className="flex items-center gap-2 bg-[#1a0f2e]/70 backdrop-blur-xl border border-white/10 rounded-xl p-1">
-            <button 
-              onClick={() => handleSpecificExpand('reverse')}
-              disabled={selectedCount !== 1}
-              className="px-3 py-2 text-sm rounded-lg transition-all hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
-              title="反差/反常识发散"
-            >
-              <FlipHorizontal size={14} className="text-rose-400" />
-              <span>反差</span>
-            </button>
-            <button 
-              onClick={() => handleSpecificExpand('vertical')}
-              disabled={selectedCount !== 1}
-              className="px-3 py-2 text-sm rounded-lg transition-all hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
-              title="垂直细分发散"
-            >
-              <ArrowDownToLine size={14} className="text-sky-400" />
-              <span>垂直</span>
-            </button>
-            <button 
-              onClick={() => handleSpecificExpand('horizontal')}
-              disabled={selectedCount !== 1}
-              className="px-3 py-2 text-sm rounded-lg transition-all hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
-              title="平行概念发散"
-            >
-              <ArrowRightToLine size={14} className="text-violet-400" />
-              <span>平行</span>
-            </button>
-          </div>
-
-          {/* 功能按钮组 */}
-          <div className="flex items-center gap-2 bg-[#1a0f2e]/70 backdrop-blur-xl border border-white/10 rounded-xl p-1">
-            <button 
-              onClick={handleGenerateIdea}
-              disabled={activeNodesCount === 0}
-              className="px-3 py-2 text-sm rounded-lg transition-all hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
-              title="生成创意文案"
-            >
-              <Quote size={14} className="text-amber-400" />
-              <span>创意</span>
-            </button>
-            <button 
-              onClick={handleCrossoverInsight}
-              disabled={selectedCount < 2}
-              className="px-3 py-2 text-sm rounded-lg transition-all hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
-              title="跨界碰撞 (需选≥2个词)"
-            >
-              <Zap size={14} className="text-orange-400" />
-              <span>跨界</span>
-            </button>
-            <button 
-              onClick={() => setIsConvergenceModalOpen(true)}
-              disabled={activeNodesCount === 0}
-              className="px-3 py-2 text-sm rounded-lg transition-all hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
-              title="策略收敛"
-            >
-              <Target size={14} className="text-blue-400" />
-              <span>收敛</span>
-            </button>
-            <button 
-              onClick={clearCanvas}
-              className="px-3 py-2 text-sm rounded-lg transition-all hover:bg-white/10 flex items-center gap-1.5 text-red-400/80 hover:text-red-400"
-              title="清空画布"
-            >
-              <Trash2 size={14} />
-              <span>清空</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================== */}
-      {/* 🎭 创意生成弹窗 */}
-      {/* ========================================== */}
-      {isIdeaModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-[#1a0f2e]/95 border border-white/10 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-emerald-400 flex items-center gap-2">
-                <Quote size={20} /> 创意文案生成
-              </h3>
-              <button onClick={() => setIsIdeaModalOpen(false)} className="text-white/40 hover:text-white transition-colors">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="border-t border-white/10 pt-4">
-              {isGenerating ? (
-                <div className="flex flex-col items-center justify-center py-8">
-                  <Loader2 size={32} className="text-emerald-400 animate-spin mb-4" />
-                  <p className="text-white/60">AI 正在激发创意...</p>
+              <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-cyan-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 z-50">
+                <div className="flex items-start gap-2">
+                  <Info size={16} className="text-cyan-400 shrink-0 mt-0.5" />
+                  <div>根据目标整理所选词语，并生成<span className="text-cyan-300">高维配图提示词</span>。<br/><span className="text-white/50 text-xs mt-1 block">提示：基于您右键选中的 {selectedCount > 0 ? selectedCount : '所有'} 个词汇</span></div>
                 </div>
-              ) : (
-                <div className="bg-white/5 rounded-xl p-4 text-white/90 min-h-[150px] whitespace-pre-line">
-                  {generatedIdea || "暂无内容"}
+              </div>
+            </div>
+          )}
+
+          {selectedCount === 1 && (
+            <>
+              <div className="h-8 w-px bg-white/20 my-auto mx-2 hidden sm:block"></div>
+              
+              {/* 反常识发散 Button & Tooltip */}
+              <div className="relative group">
+                <button onClick={() => handleSpecificExpand('reverse')} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-pink-500 hover:to-rose-400 text-white shadow-lg shadow-rose-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
+                  <FlipHorizontal size={16} /> <span className="hidden sm:inline">反向模式</span>
+                </button>
+                <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-rose-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
+                  <div className="flex items-start gap-2">
+                    <Info size={16} className="text-rose-400 shrink-0 mt-0.5" />
+                    <div>生成与该词<span className="text-rose-300">对立面、反常识</span>的概念。<br/><span className="text-white/50 text-xs mt-1 block">例："夏天" → "羽绒服" "冰雕"</span></div>
+                  </div>
                 </div>
-              )}
-            </div>
-            <div className="flex justify-end mt-4">
-              <button 
-                onClick={() => setIsIdeaModalOpen(false)}
-                className="px-4 py-2 bg-emerald-500/80 hover:bg-emerald-500 rounded-lg transition-all"
-              >
-                关闭
+              </div>
+
+              {/* 纵向深入 Button & Tooltip */}
+              <div className="relative group">
+                <button onClick={() => handleSpecificExpand('vertical')} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-indigo-500 hover:to-purple-400 text-white shadow-lg shadow-purple-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
+                  <ArrowDownToLine size={16} /> <span className="hidden sm:inline">纵向深入</span>
+                </button>
+                <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-purple-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 z-50">
+                  <div className="flex items-start gap-2">
+                    <Info size={16} className="text-purple-400 shrink-0 mt-0.5" />
+                    <div>挖掘该词的<span className="text-purple-300">底层、更细分具体</span>的节点。<br/><span className="text-white/50 text-xs mt-1 block">例："猫" → "蓝金渐层" "幼猫喂养"</span></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 横向扩展 Button & Tooltip */}
+              <div className="relative group">
+                <button onClick={() => handleSpecificExpand('horizontal')} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-blue-500 hover:to-indigo-400 text-white shadow-lg shadow-blue-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
+                  <ArrowRightToLine size={16} /> <span className="hidden sm:inline">横向扩展</span>
+                </button>
+                <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-indigo-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 z-50">
+                  <div className="flex items-start gap-2">
+                    <Info size={16} className="text-indigo-400 shrink-0 mt-0.5" />
+                    <div>寻找与该词<span className="text-indigo-300">同父类的平行概念</span>。<br/><span className="text-white/50 text-xs mt-1 block">例："猫" → "狗" "兔子" "仓鼠"</span></div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {selectedCount >= 2 && (
+            <div className="relative group">
+              <button onClick={handleCrossoverInsight} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-400 hover:from-orange-400 hover:to-amber-300 text-white shadow-lg shadow-amber-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all peer">
+                <Zap size={16} /> <span className="hidden sm:inline">跨界碰撞</span>
               </button>
+              <div className="absolute top-full right-0 mt-2 w-72 p-3 bg-[#1e1136]/90 backdrop-blur-xl border border-amber-500/30 rounded-xl shadow-xl text-sm text-white/90 font-medium opacity-0 translate-y-2 pointer-events-none transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0 z-50">
+                <div className="flex items-start gap-2">
+                  <Info size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                  <div>将选中词语<span className="text-amber-300">跨领域强制关联</span>，碰撞颠覆性点子。<br/><span className="text-white/50 text-xs mt-1 block">例："咖啡"+"航天" → "零重力咖啡杯"</span></div>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {nodes.length > 0 && (
+            <button onClick={handleGenerateIdea} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-white shadow-lg shadow-emerald-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all">
+              <Sparkles size={16} /> <span className="hidden sm:inline">导出创意</span>
+            </button>
+          )}
         </div>
-      )}
+      </div>
+
+      {/* 中心/底部输入框 */}
+      <div className={`absolute w-full flex justify-center pointer-events-none transition-all duration-700 ease-in-out z-30 ${isInputCenter ? 'top-[60%] -translate-y-1/2' : 'bottom-8'}`}>
+        <form onSubmit={handleInitialSubmit} className={`pointer-events-auto relative group flex items-center bg-[#1a0f2e]/60 backdrop-blur-xl border p-2 transition-all duration-700 ${isInputCenter ? 'w-[90%] max-w-xl rounded-[3rem] border-emerald-400/50 glowing-capsule' : 'w-[90%] max-w-md rounded-full border-white/20 shadow-emerald-500/10'}`}>
+          <input ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="输入起始词或短句，开启发散..." className="w-full bg-transparent border-none outline-none text-white px-8 py-4 placeholder:text-white/50 text-lg font-medium" />
+          <button type="submit" className={`absolute right-3 p-4 rounded-full transition-colors flex items-center justify-center ${isInputCenter ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(52,211,153,0.8)]' : 'bg-emerald-500/80 hover:bg-emerald-400 text-white p-3 right-2'}`}>
+            <Sparkles size={isInputCenter ? 24 : 20} />
+          </button>
+        </form>
+      </div>
 
       {/* ========================================== */}
-      {/* ⚡ 跨界碰撞弹窗 */}
-      {/* ========================================== */}
-      {isInsightModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-[#1a0f2e]/95 border border-white/10 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-orange-400 flex items-center gap-2">
-                <Zap size={20} /> 跨界创意碰撞
-              </h3>
-              <button onClick={() => setIsInsightModalOpen(false)} className="text-white/40 hover:text-white transition-colors">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="border-t border-white/10 pt-4">
-              {isGeneratingInsight ? (
-                <div className="flex flex-col items-center justify-center py-8">
-                  <Loader2 size={32} className="text-orange-400 animate-spin mb-4" />
-                  <p className="text-white/60">AI 正在跨界碰撞...</p>
-                </div>
-              ) : (
-                <div className="bg-white/5 rounded-xl p-4 text-white/90 min-h-[150px] whitespace-pre-line">
-                  {generatedInsight || "暂无内容"}
-                </div>
-              )}
-            </div>
-            <div className="flex justify-end mt-4">
-              <button 
-                onClick={() => setIsInsightModalOpen(false)}
-                className="px-4 py-2 bg-orange-500/80 hover:bg-orange-500 rounded-lg transition-all"
-              >
-                关闭
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================== */}
-      {/* 🎯 策略收敛弹窗 */}
+      {/* 🎯 目标收敛模态框 (包含文生图提示词生成，彻底防并发超时) */}
       {/* ========================================== */}
       {isConvergenceModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-[#1a0f2e]/95 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-auto shadow-2xl">
-            <div className="sticky top-0 bg-[#1a0f2e]/95 backdrop-blur-xl border-b border-white/10 p-6">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="text-xl font-bold text-blue-400 flex items-center gap-2">
-                  <Target size={20} /> 策略收敛聚合
-                </h3>
-                <button onClick={() => setIsConvergenceModalOpen(false)} className="text-white/40 hover:text-white transition-colors">
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  value={convergenceGoal}
-                  onChange={(e) => setConvergenceGoal(e.target.value)}
-                  placeholder="输入收敛目标（例如：打造爆款短视频、设计创新产品）"
-                  className="flex-1 bg-white/5 border border-white/10 focus:border-blue-400/50 rounded-lg py-2 px-4 text-sm placeholder:text-white/30 outline-none transition-all"
-                />
-                <button 
-                  onClick={handleRunConvergence}
-                  disabled={!convergenceGoal.trim()}
-                  className="px-4 py-2 bg-blue-500/80 hover:bg-blue-500 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {convergenceStatus.step > 0 ? (
-                    <>
-                      <Loader2 size={16} className={`animate-spin ${convergenceStatus.step === 4 ? 'hidden' : ''}`} />
-                      <span>{convergenceStatus.text}</span>
-                    </>
-                  ) : (
-                    <span>开始收敛</span>
-                  )}
-                </button>
-              </div>
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0f172a] border border-cyan-500/30 rounded-3xl w-full max-w-6xl shadow-[0_0_80px_rgba(6,182,212,0.15)] flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5 shrink-0">
+              <h3 className="text-xl font-bold flex items-center gap-3 text-cyan-400"><Target size={24} /> 目标收敛与高维提示词提取</h3>
+              <button onClick={() => {setIsConvergenceModalOpen(false); setGeneratedConvergence(''); setConvergencePrompt(''); setConvergenceGoal('');}} className="text-white/50 hover:text-white transition-colors p-2 bg-white/5 rounded-full hover:bg-white/10"><X size={20} /></button>
             </div>
-
-            <div className="p-6 space-y-6">
-              {/* 策略聚类结果 */}
-              {generatedConvergence && (
-                <div className="space-y-2">
-                  <h4 className="text-lg font-semibold text-emerald-400 flex items-center gap-2">
-                    <Info size={18} /> 核心策略聚类
-                  </h4>
-                  <div className="bg-white/5 rounded-xl p-4 text-white/90 whitespace-pre-line">
-                    {generatedConvergence}
+            
+            <div className="p-6 md:p-8 overflow-y-auto max-h-[80vh] flex flex-col gap-6">
+              {!generatedConvergence && !isGeneratingConvergence ? (
+                <>
+                  <div className="bg-cyan-500/10 border border-cyan-500/20 p-4 rounded-xl text-cyan-100 text-sm">
+                    AI 将基于您指定的 <b>{activeNodesCount}</b> 个关联词汇，围绕目标进行策略聚类，<b>并同步生成包含 8 大维度细节的中英双语「概念配图提示词」</b>。
                   </div>
-                </div>
-              )}
-
-              {/* AI绘画提示词 */}
-              {convergencePrompt && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-lg font-semibold text-amber-400 flex items-center gap-2">
-                      <ImageIcon size={18} /> 高维配图提示词
-                    </h4>
-                    <button 
-                      onClick={copyPromptToClipboard}
-                      className="text-sm flex items-center gap-1.5 text-white/70 hover:text-white transition-colors"
-                    >
-                      {isPromptCopied ? (
-                        <><Check size={14} /> 已复制</>
-                      ) : (
-                        <><Copy size={14} /> 复制英文</>
-                      )}
+                  <div className="flex flex-col gap-3">
+                    <label className="text-white/80 font-medium">您的最终业务/创意目标是什么？</label>
+                    <textarea 
+                      value={convergenceGoal}
+                      onChange={(e) => setConvergenceGoal(e.target.value)}
+                      placeholder="例如：为一家宠物咖啡馆策划六一儿童节的营销活动..."
+                      className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-500/50 transition-colors resize-none h-32"
+                    />
+                  </div>
+                  <div className="flex justify-end pt-2">
+                    <button onClick={handleRunConvergence} disabled={!convergenceGoal.trim()} className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                      <Focus size={18} /> 开始聚类收敛
                     </button>
                   </div>
-                  <div className="bg-white/5 rounded-xl p-4 text-white/90 whitespace-pre-line max-h-[300px] overflow-auto">
-                    {convergencePrompt}
-                  </div>
+                </>
+              ) : isGeneratingConvergence ? (
+                <div className="flex flex-col items-center justify-center py-20 text-cyan-400 gap-5">
+                  <Loader2 className="animate-spin" size={50} />
+                  <p className="animate-pulse text-lg">正在极速提取核心策略并整理分类 (1/2)...</p>
                 </div>
-              )}
-
-              {/* 行业资讯 */}
-              {convergenceNews && (
-                <div className="space-y-2">
-                  <h4 className="text-lg font-semibold text-sky-400 flex items-center gap-2">
-                    <BookOpen size={18} /> 行业最新资讯
-                  </h4>
-                  <div className={`bg-white/5 rounded-xl p-4 text-white/90 whitespace-pre-line ${convergenceNews.error ? 'text-red-400/80' : ''}`}>
-                    {convergenceNews.text}
+              ) : (
+                <div className="flex flex-col md:flex-row gap-8">
+                  {/* 左侧：策略收敛 */}
+                  <div className="flex-1 flex flex-col gap-4">
+                    <div className="text-cyan-400 font-medium pb-2 border-b border-white/10 flex items-center gap-2">
+                      <Focus size={18} /> 
+                      策略提取：<span className="text-white truncate" title={convergenceGoal}>“{convergenceGoal}”</span>
+                    </div>
+                    <div className="text-white/90 leading-loose whitespace-pre-wrap text-sm font-medium h-full max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+                      {generatedConvergence}
+                    </div>
                   </div>
-                </div>
-              )}
 
-              {/* 空状态 */}
-              {!generatedConvergence && !convergencePrompt && !convergenceNews && convergenceStatus.step === 0 && (
-                <div className="flex flex-col items-center justify-center py-12 text-white/40">
-                  <Target size={48} className="mb-4 opacity-50" />
-                  <p>输入收敛目标并点击"开始收敛"，AI将为您：</p>
-                  <ul className="mt-2 text-sm list-disc list-inside text-center">
-                    <li>提取核心策略并聚类</li>
-                    <li>生成高维度AI绘画提示词</li>
-                    <li>检索全网最新行业资讯</li>
-                  </ul>
+                  {/* 中间分割线 */}
+                  <div className="w-px bg-white/10 hidden md:block"></div>
+
+                  {/* 右侧：高维提示词（异步渐进加载） */}
+                  <div className="flex-1 flex flex-col gap-4">
+                    <div className="flex justify-between items-center pb-2 border-b border-white/10">
+                      <div className="text-purple-400 font-medium flex items-center gap-2">
+                        <ImageIcon size={18} /> 高维概念配图提示词 (Prompt)
+                      </div>
+                      {convergencePrompt && !convergencePrompt.includes("生成中") && !convergencePrompt.includes("❌") && (
+                        <button onClick={() => {
+                          const cleanPrompt = convergencePrompt.replace(/<english_prompt>|<\/english_prompt>/gi, '').trim();
+                          navigator.clipboard.writeText(cleanPrompt);
+                          setIsPromptCopied(true);
+                          setTimeout(() => setIsPromptCopied(false), 2000);
+                        }} className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-lg transition-all text-xs font-bold">
+                          {isPromptCopied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                          {isPromptCopied ? <span className="text-emerald-400">已复制纯英文版</span> : '一键复制英文 Prompt'}
+                        </button>
+                      )}
+                    </div>
+                    
+                    {convergencePrompt ? (
+                      convergencePrompt.includes("❌") ? (
+                        <div className="flex-1 bg-red-500/5 rounded-xl border border-red-500/20 flex flex-col gap-3 items-center justify-center min-h-[200px] p-4 text-center">
+                          <AlertCircle className="text-red-400" size={32} />
+                          <span className="text-red-400/80 text-sm">{convergencePrompt}</span>
+                        </div>
+                      ) : (
+                        <div className="font-mono text-xs text-white/80 bg-black/40 p-4 rounded-xl leading-relaxed whitespace-pre-wrap max-h-[500px] overflow-y-auto custom-scrollbar border border-white/5">
+                          {convergencePrompt.replace(/<english_prompt>|<\/english_prompt>/gi, '\n==============================\n【提供给绘图 AI 的纯英文版】\n==============================\n')}
+                        </div>
+                      )
+                    ) : (
+                      <div className="flex-1 bg-white/5 animate-pulse rounded-xl border border-white/5 flex flex-col gap-3 items-center justify-center min-h-[200px]">
+                        <Loader2 className="animate-spin text-purple-400/50" size={24} />
+                        <span className="text-white/30 text-sm">策略已就绪，正在后台排队生成 8大维度双语提示词 (2/2)...</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
+            
+            {/* 底部按钮 */}
+            {generatedConvergence && (
+              <div className="p-6 border-t border-white/5 bg-white/5 flex justify-end">
+                <button onClick={() => {setGeneratedConvergence(''); setConvergencePrompt(''); setConvergenceGoal('');}} className="px-5 py-2 bg-black/30 hover:bg-black/50 text-white/80 rounded-xl transition-all font-medium text-sm border border-white/10">
+                  重新输入目标
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-            <div className="sticky bottom-0 bg-[#1a0f2e]/95 backdrop-blur-xl border-t border-white/10 p-4 flex justify-end">
-              <button 
-                onClick={() => setIsConvergenceModalOpen(false)}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all"
-              >
-                关闭
-              </button>
+      {/* 创意文案模态框 */}
+      {isIdeaModalOpen && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1e1136] border border-white/10 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5"><h3 className="text-xl font-bold flex items-center gap-2 text-amber-400"><Sparkles size={20} /> 创意文案生成</h3><button onClick={() => setIsIdeaModalOpen(false)} className="text-white/50 hover:text-white transition-colors"><X size={24} /></button></div>
+            <div className="p-8 overflow-y-auto flex-1 text-white/90 leading-relaxed whitespace-pre-wrap text-lg">
+              {isGenerating ? <div className="flex flex-col items-center justify-center py-12 text-emerald-400 gap-4"><Loader2 className="animate-spin" size={40} /><p className="animate-pulse">AI正在将您的灵感火花串联...</p></div> : <p>{generatedIdea}</p>}
+            </div>
+            {!isGenerating && <div className="p-6 border-t border-white/5 bg-black/20 flex justify-end gap-3"><button onClick={() => navigator.clipboard.writeText(generatedIdea)} className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors font-medium"><Download size={18} /> 复制文案</button></div>}
+          </div>
+        </div>
+      )}
+
+      {/* 跨界碰撞模态框 */}
+      {isInsightModalOpen && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#2a1325] border border-orange-500/20 rounded-3xl w-full max-w-md shadow-[0_0_50px_rgba(249,115,22,0.15)] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5"><h3 className="text-xl font-bold flex items-center gap-2 text-orange-400"><Zap size={20} /> 颠覆性跨界碰撞</h3><button onClick={() => setIsInsightModalOpen(false)} className="text-white/50 hover:text-white transition-colors"><X size={24} /></button></div>
+            <div className="p-8 overflow-y-auto text-white/90 leading-relaxed whitespace-pre-wrap text-base font-medium">
+              {isGeneratingInsight ? <div className="flex flex-col items-center justify-center py-8 text-orange-400 gap-4"><Loader2 className="animate-spin" size={40} /><p className="animate-pulse">正在寻找词语间的颠覆性联系...</p></div> : <div className="border-l-4 border-orange-500/50 pl-4 py-2"><p>{generatedInsight}</p></div>}
             </div>
           </div>
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* 🖱️ 右下角全屏按钮 */}
-      {/* ========================================== */}
-      {!isInputCenter && (
-        <button
-          onClick={() => {
-            if (document.fullscreenElement) {
-              document.exitFullscreen();
-            } else {
-              document.documentElement.requestFullscreen();
-            }
-          }}
-          className="absolute bottom-6 right-6 z-30 p-3 bg-[#1a0f2e]/70 backdrop-blur-xl border border-white/10 rounded-full shadow-xl text-white/80 hover:text-white hover:bg-[#1a0f2e] transition-all"
-          title="全屏/退出全屏"
-        >
-          <Maximize size={20} />
-        </button>
-      )}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes dash { to { stroke-dashoffset: -12; } }
+        @keyframes capsule-glow { 0%, 100% { box-shadow: 0 0 30px rgba(52,211,153,0.3), inset 0 0 20px rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.4); } 50% { box-shadow: 0 0 60px rgba(52,211,153,0.7), inset 0 0 40px rgba(52,211,153,0.3); border-color: rgba(52,211,153,0.9); } }
+        .glowing-capsule { animation: capsule-glow 3s ease-in-out infinite; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+      `}} />
     </div>
   );
 }
