@@ -97,7 +97,8 @@ const DOUBAO_API_URL = "/doubao-api";
 const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
 
 // 🔴 必改项：此处必须填入豆包的【文本对话模型】 Endpoint ID
-const DOUBAO_TEXT_MODEL = "ep-20260509194654-r9g6m"; // <-- 记得改成真实的对话模型ID！
+// ⚡ 强烈建议：为了体验秒出的快感，请在后台创建一个 "doubao-lite-4k" 或 "doubao-lite-32k" 模型填入下方！
+const DOUBAO_TEXT_MODEL = "ep-20260510180326-qtvbg"; // <-- 记得改成真实的对话模型ID！
 
 
 // ==========================================
@@ -114,7 +115,7 @@ const cache = {
 // ==========================================
 // 🤖 统一的豆包API调用函数
 // ==========================================
-const callDoubaoAPI = async (endpoint, payload, timeout = 35000) => {
+const callDoubaoAPI = async (endpoint, payload, timeout = 60000) => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -150,28 +151,29 @@ const callDoubaoAPI = async (endpoint, payload, timeout = 35000) => {
 };
 
 // ==========================================
-// 🧠 AI 功能实现 (极速发散与多模式)
+// 🧠 AI 功能实现 (极速提效版)
 // ==========================================
 const generateRelatedWords = async (word, mode = 'default') => {
   const cacheKey = `${mode}_${word}`;
   if (cache.relatedWords.has(cacheKey)) return cache.relatedWords.get(cacheKey);
 
+  // 【极致压缩 Prompt 和结构】：采用缩写 w/e 代替 word/en，节省大量 Tokens
   let systemPrompt = "";
   if (mode === 'default') {
-    systemPrompt = `直接输出与“${word}”相关的7个网感词及英文，必须是严格的JSON数组格式：[{"word":"中文","en":"english"}]`;
+    systemPrompt = `发散“${word}”的7个网感词。严格JSON数组:[{"w":"词","e":"英文"}]`;
   } else if (mode === 'reverse') {
-    systemPrompt = `作为发散专家，直接输出与“${word}”完全对立、反常识或具强烈反差感的7个词及英文(如:夏天->羽绒服/冰雕)。必须严格JSON数组格式：[{"word":"中文","en":"english"}]`;
+    systemPrompt = `“${word}”的7个反差/反常识/对立词。严格JSON数组:[{"w":"词","e":"英文"}]`;
   } else if (mode === 'vertical') {
-    systemPrompt = `作为发散专家，直接输出“${word}”的7个纵向深入、更细分的下层具体节点词及英文(如:猫->幼猫喂养/蓝金渐层)。必须严格JSON数组格式：[{"word":"中文","en":"english"}]`;
+    systemPrompt = `“${word}”的7个向下垂直细分词。严格JSON数组:[{"w":"词","e":"英文"}]`;
   } else if (mode === 'horizontal') {
-    systemPrompt = `作为发散专家，直接输出与“${word}”同属于一个父类的7个横向平行概念词及英文(如:猫->狗/兔子/仓鼠)。必须严格JSON数组格式：[{"word":"中文","en":"english"}]`;
+    systemPrompt = `“${word}”的7个同类平行概念。严格JSON数组:[{"w":"词","e":"英文"}]`;
   }
 
   const payload = {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: systemPrompt }],
-    temperature: 0.7,
-    max_tokens: 250, 
+    temperature: 0.8, // 略微调高发散度，有助于模型快速跳出常规词
+    max_tokens: 150, // 极限压低 Token
     response_format: { type: "json_object" }
   };
 
@@ -181,11 +183,17 @@ const generateRelatedWords = async (word, mode = 'default') => {
     jsonStr = jsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
     
     const data = JSON.parse(jsonStr);
-    const arrayData = Array.isArray(data) ? data : (data.words || data.result || Object.values(data)[0]);
+    let rawArray = Array.isArray(data) ? data : (data.words || data.result || Object.values(data)[0]);
     
-    if (!Array.isArray(arrayData) || arrayData.length === 0) {
+    if (!Array.isArray(rawArray) || rawArray.length === 0) {
       throw new Error("AI 返回了无法解析的错误格式数据");
     }
+
+    // 兼容原有的字或者极致压缩的 w/e 属性
+    const arrayData = rawArray.map(item => ({
+      word: item.w || item.word || item.中文 || "未知",
+      en: item.e || item.en || item.英文 || "unknown"
+    }));
 
     cache.relatedWords.set(cacheKey, arrayData);
     return arrayData;
@@ -199,13 +207,13 @@ const generateCreativeIdea = async (words) => {
   const key = words.sort().join(',');
   if (cache.creativeIdeas.has(key)) return cache.creativeIdeas.get(key);
 
-  const prompt = `基于以下词语：${words.join(', ')}。生成一篇小红书爆款文案，语言精炼，控制在150字以内。`;
+  const prompt = `用“${words.join(', ')}”写100字小红书爆款文案。拒绝废话，直接输出内容。`;
   
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.8,
-    max_tokens: 300 
+    max_tokens: 200 // 压缩字数提速
   });
   const data = result.choices[0].message.content;
   cache.creativeIdeas.set(key, data);
@@ -217,13 +225,13 @@ const generateCrossoverInsight = async (words) => {
   const key = words.sort().join(',');
   if (cache.connections.has(key)) return cache.connections.get(key);
 
-  const prompt = `作为跨界创新大师，请强制关联以下不同领域的词语：${words.join(', ')}。直接输出3个极具颠覆性的跨界产品或营销点子（例如：“咖啡”+“航天”→“零重力咖啡杯”、“火星咖啡种植”）。排版清晰，控制在150字以内。`;
+  const prompt = `强制跨界关联：${words.join(', ')}。输出3个极具颠覆性的产品或营销点子，100字内，拒绝废话。`;
   
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.9,
-    max_tokens: 250 
+    max_tokens: 200 
   });
   const data = result.choices[0].message.content;
   cache.connections.set(key, data);
@@ -232,13 +240,13 @@ const generateCrossoverInsight = async (words) => {
 
 // 目标收敛模式（策略分类）
 const generateConvergence = async (goal, allWordsStr) => {
-  const prompt = `我的目标是：“${goal}”。\n\n请从以下词语库中筛选出最符合该目标的10个核心词语，并将它们分成2到3个清晰的策略聚类方向：\n【词语库】：${allWordsStr}\n\n请直接输出排版美观的聚类结果，每个类别加上小标题，拒绝废话，总字数控制在250字以内。`;
+  const prompt = `目标：“${goal}”。\n从以下词库筛选最核心的10个词并分2-3类：${allWordsStr}。\n直接输出美观排版的聚类结果，控制在200字内。`;
   
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.5,
-    max_tokens: 400 
+    max_tokens: 300 
   });
   return result.choices[0].message.content;
 };
@@ -248,26 +256,16 @@ const generateConvergenceImagePrompt = async (goal, wordsStr) => {
   const cacheKey = `${goal}_${wordsStr}`;
   if (cache.imagePrompts.has(cacheKey)) return cache.imagePrompts.get(cacheKey);
 
-  const prompt = `请为核心目标概念：“${goal}”及关联词汇：“${wordsStr}”创作一段极其详细的【中英双语】文生图提示词(Prompt)。
-
-要求：
-1. 必须包含以下8个维度的详细描述（每个维度都需要中英文对照）：
-   - 主体内容 (Subject)
-   - 风格 (Style)
-   - 灯光 (Lighting)
-   - 材质 (Material)
-   - 构图 (Composition)
-   - 配色 (Color Palette)
-   - 质感 (Texture)
-   - 环境 (Environment)
-2. 排版要有结构感，高级且专业。
-3. 在最后单独提供一段仅供机器读取的【纯英文完整 Prompt 组合】，并强制使用 <english_prompt> 和 </english_prompt> 标签将其包裹起来。`;
+  // 【优化提速】让模型直接写短语，而不是长句子，显著减少耗时
+  const prompt = `为“${goal}”及词汇“${wordsStr}”写中英双语配图提示词。
+必须包含8个维度：主体,风格,光影,材质,构图,配色,质感,环境（用词组即可，拒绝长句）。
+最后单独用<english_prompt>标签包裹纯英文完整Prompt。`;
 
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.7,
-    max_tokens: 1000
+    temperature: 0.6,
+    max_tokens: 500 // 下调最大 Token
   });
   const data = result.choices[0].message.content.trim();
   cache.imagePrompts.set(cacheKey, data);
@@ -689,16 +687,19 @@ export default function BrainstormApp() {
     const allWordsStr = targetNodes.map(n => n.text).join('、');
     
     try {
-      // 并行请求：聚合策略 + 高维文生图提示词（基于选中词和目标）
-      const [strategyResult, promptResult] = await Promise.all([
-        generateConvergence(convergenceGoal.trim(), allWordsStr),
-        generateConvergenceImagePrompt(convergenceGoal.trim(), allWordsStr)
-      ]);
+      // 第一阶段：先生成策略（速度快），立即显示，避免超时白屏阻塞！
+      const strategyPromise = generateConvergence(convergenceGoal.trim(), allWordsStr);
+      const promptPromise = generateConvergenceImagePrompt(convergenceGoal.trim(), allWordsStr);
+
+      const strategyResult = await strategyPromise;
       setGeneratedConvergence(strategyResult);
+      setIsGeneratingConvergence(false); // 策略出来后，立马关掉全屏 Loader
+
+      // 第二阶段：后台静默等待提示词结果，避免并发或大文本引发的 Timeout 体验
+      const promptResult = await promptPromise;
       setConvergencePrompt(promptResult);
     } catch (err) {
       setError(`收敛聚合失败: ${err.message}`);
-    } finally {
       setIsGeneratingConvergence(false);
     }
   };
@@ -922,7 +923,7 @@ export default function BrainstormApp() {
       </div>
 
       {/* ========================================== */}
-      {/* 🎯 目标收敛模态框 (包含文生图提示词生成) */}
+      {/* 🎯 目标收敛模态框 (包含文生图提示词生成，已优化超时体验) */}
       {/* ========================================== */}
       {isConvergenceModalOpen && (
         <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -956,7 +957,7 @@ export default function BrainstormApp() {
               ) : isGeneratingConvergence ? (
                 <div className="flex flex-col items-center justify-center py-20 text-cyan-400 gap-5">
                   <Loader2 className="animate-spin" size={50} />
-                  <p className="animate-pulse text-lg">正在同时提取核心策略与高维图生文提示词...</p>
+                  <p className="animate-pulse text-lg">正在极速提取核心策略并整理分类...</p>
                 </div>
               ) : (
                 <div className="flex flex-col md:flex-row gap-8">
@@ -974,7 +975,7 @@ export default function BrainstormApp() {
                   {/* 中间分割线 */}
                   <div className="w-px bg-white/10 hidden md:block"></div>
 
-                  {/* 右侧：高维提示词 */}
+                  {/* 右侧：高维提示词（异步渐进加载） */}
                   <div className="flex-1 flex flex-col gap-4">
                     <div className="flex justify-between items-center pb-2 border-b border-white/10">
                       <div className="text-purple-400 font-medium flex items-center gap-2">
@@ -997,8 +998,9 @@ export default function BrainstormApp() {
                         {convergencePrompt.replace(/<english_prompt>|<\/english_prompt>/gi, '\n==============================\n【提供给绘图 AI 的纯英文版】\n==============================\n')}
                       </div>
                     ) : (
-                      <div className="flex-1 bg-white/5 animate-pulse rounded-xl border border-white/5 flex items-center justify-center min-h-[200px]">
-                        <span className="text-white/30 text-sm">生成中...</span>
+                      <div className="flex-1 bg-white/5 animate-pulse rounded-xl border border-white/5 flex flex-col gap-3 items-center justify-center min-h-[200px]">
+                        <Loader2 className="animate-spin text-purple-400/50" size={24} />
+                        <span className="text-white/30 text-sm">正在后台极速生成 8大维度双语提示词...</span>
                       </div>
                     )}
                   </div>
@@ -1007,7 +1009,7 @@ export default function BrainstormApp() {
             </div>
             
             {/* 底部按钮 */}
-            {generatedConvergence && !isGeneratingConvergence && (
+            {generatedConvergence && (
               <div className="p-6 border-t border-white/5 bg-white/5 flex justify-end">
                 <button onClick={() => {setGeneratedConvergence(''); setConvergencePrompt(''); setConvergenceGoal('');}} className="px-5 py-2 bg-black/30 hover:bg-black/50 text-white/80 rounded-xl transition-all font-medium text-sm border border-white/10">
                   重新输入目标
