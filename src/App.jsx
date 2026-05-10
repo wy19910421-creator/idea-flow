@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Sparkles, Download, Trash2, History, X, Loader2, Maximize, MousePointer2, Zap, Quote, Copy, Check, AlertCircle, BookOpen, Target, FlipHorizontal, ArrowDownToLine, ArrowRightToLine, Focus, Info, Image as ImageIcon } from 'lucide-react';
+import { Sparkles, Download, Trash2, X, Loader2, Maximize, MousePointer2, Zap, Quote, Copy, Check, AlertCircle, BookOpen, Target, FlipHorizontal, ArrowDownToLine, ArrowRightToLine, Focus, Info, Image as ImageIcon } from 'lucide-react';
 
 // ==========================================
 // 🌌 二进制树画布动画组件
@@ -97,12 +97,8 @@ const DOUBAO_API_URL = "/doubao-api";
 const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
 
 // 🔴 必改项：此处必须填入豆包的【文本对话模型】 Endpoint ID
-// ⚡ 强烈建议：为了体验秒出、防止 Vercel 504 超时，请务必在后台创建一个 "doubao-lite-4k" 模型填入下方！
-const DOUBAO_TEXT_MODEL = "ep-20260510220258-bx5rk"; // <-- 记得改成真实的对话模型ID！
-
-// 全网真实搜索 API Key (由环境自动注入)
-const GEMINI_API_KEY = ""; 
-
+// ⚡ 如果您需要真正的联网搜索，请务必在火山引擎创建一个"智能体"，开启"联网搜索"插件，并将该智能体的 Endpoint ID 填入下方！
+const DOUBAO_TEXT_MODEL = "ep-20260510220258-bx5rk"; // <-- 记得改成真实的模型ID！
 
 // ==========================================
 // 📦 全局缓存
@@ -117,9 +113,10 @@ const cache = {
 };
 
 // ==========================================
-// 🤖 统一的豆包API调用函数 (带9秒安全熔断与强化错误捕捉)
+// 🤖 统一的豆包API调用函数 
 // ==========================================
-const callDoubaoAPI = async (endpoint, payload, timeout = 9000) => {
+// 超时时间放宽至 30 秒，防止正常的大段文本生成被误杀
+const callDoubaoAPI = async (endpoint, payload, timeout = 30000) => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -141,7 +138,7 @@ const callDoubaoAPI = async (endpoint, payload, timeout = 9000) => {
         throw new Error("Vercel云端10秒限制拦截！由于模型生成太慢导致超时。强烈建议在火山后台换成 doubao-lite 模型。");
       }
       if (response.status === 429) {
-        throw new Error("并发请求太多被限流啦，请稍微等几秒钟再试哦。");
+        throw new Error("并发请求被限流，请稍等几秒钟再试。");
       }
       
       const errorText = await response.text();
@@ -150,19 +147,14 @@ const callDoubaoAPI = async (endpoint, payload, timeout = 9000) => {
         const errorJson = JSON.parse(errorText);
         if (errorJson.error?.message) {
           errorMsg = `豆包报错: ${errorJson.error.message}`;
-        } else {
-          // 如果没有 message，但有内容，直接输出前100个字符用于排障
-          errorMsg = `豆包报错: 参数错误或模型不兼容 (${errorText.substring(0, 100)})`;
         }
-      } catch (e) {
-        errorMsg = `豆包报错: ${errorText.substring(0, 100)}`;
-      }
+      } catch (e) {}
       throw new Error(errorMsg);
     }
 
     return await response.json();
   } catch (error) {
-    if (error.name === 'AbortError') throw new Error("大模型思考时间过长，触发了9秒安全熔断机制，以防止服务器卡死。请换用更快的 Lite 模型或精简词汇量。");
+    if (error.name === 'AbortError') throw new Error("大模型响应超时，请检查网络，或尝试换用更快的 Lite 模型。");
     console.error("网络请求底层错误:", error);
     throw error;
   }
@@ -178,13 +170,13 @@ const generateRelatedWords = async (word, mode = 'default') => {
 
   let systemPrompt = "";
   if (mode === 'default') {
-    systemPrompt = `发散“${word}”的7个网感词。严格输出纯JSON数组，格式:[{"w":"中文词","e":"英文"}]。不要输出任何markdown标记。`;
+    systemPrompt = `发散“${word}”的7个网感词。严格输出纯JSON数组，格式:[{"w":"中文词","e":"英文"}]。不要任何markdown标记。`;
   } else if (mode === 'reverse') {
-    systemPrompt = `“${word}”的7个反差/反常识/对立词。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要输出任何markdown标记。`;
+    systemPrompt = `“${word}”的7个反差/反常识/对立词。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要任何markdown标记。`;
   } else if (mode === 'vertical') {
-    systemPrompt = `“${word}”的7个向下垂直细分词。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要输出任何markdown标记。`;
+    systemPrompt = `“${word}”的7个向下垂直细分词。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要任何markdown标记。`;
   } else if (mode === 'horizontal') {
-    systemPrompt = `“${word}”的7个同类平行概念。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要输出任何markdown标记。`;
+    systemPrompt = `“${word}”的7个同类平行概念。严格输出纯JSON数组:[{"w":"词","e":"英文"}]。不要任何markdown标记。`;
   }
 
   const payload = {
@@ -195,10 +187,9 @@ const generateRelatedWords = async (word, mode = 'default') => {
   };
 
   try {
-    const result = await callDoubaoAPI("/chat/completions", payload, 8000);
+    const result = await callDoubaoAPI("/chat/completions", payload, 15000);
     let jsonStr = result.choices[0].message.content;
     
-    // 强力清洗 Markdown 符号
     jsonStr = jsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
     
     const data = JSON.parse(jsonStr);
@@ -231,7 +222,7 @@ const generateCreativeIdea = async (words) => {
     messages: [{ role: "user", content: prompt }],
     temperature: 0.8,
     max_tokens: 200 
-  }, 9000);
+  }, 15000);
   const data = result.choices[0].message.content;
   cache.creativeIdeas.set(key, data);
   return data;
@@ -248,13 +239,12 @@ const generateCrossoverInsight = async (words) => {
     messages: [{ role: "user", content: prompt }],
     temperature: 0.9,
     max_tokens: 200 
-  }, 9000);
+  }, 15000);
   const data = result.choices[0].message.content;
   cache.connections.set(key, data);
   return data;
 };
 
-// 目标收敛模式（策略分类）
 const generateConvergence = async (goal, allWordsStr) => {
   const prompt = `目标：“${goal}”。\n从以下词汇筛选最核心要素并分2类：${allWordsStr}。\n直接输出排版美观的聚类结果，拒绝废话，限150字内。`;
   
@@ -263,11 +253,10 @@ const generateConvergence = async (goal, allWordsStr) => {
     messages: [{ role: "user", content: prompt }],
     temperature: 0.5,
     max_tokens: 250 
-  }, 9000);
+  }, 20000);
   return result.choices[0].message.content;
 };
 
-// 目标收敛模式（高维文生图提示词）
 const generateConvergenceImagePrompt = async (goal, wordsStr) => {
   const cacheKey = `${goal}_${wordsStr}`;
   if (cache.imagePrompts.has(cacheKey)) return cache.imagePrompts.get(cacheKey);
@@ -279,82 +268,53 @@ const generateConvergenceImagePrompt = async (goal, wordsStr) => {
 2. 风格 (Style)：如 Cyberpunk, Photorealistic, Oil painting, Studio Ghibli 等。
 3. 光影 (Lighting)：如 伦勃朗光, 赛博朋克霓虹光, 柔和丁达尔光效 等。
 4. 材质 (Material)：如 粗糙的亚麻布, 泛着冷光的金属, 晶莹剔透的玻璃。
-5. 构图 (Composition)：如 黄金分割, 对称构图, 仰视特写 (Low angle close-up)。
-6. 配色 (Color Palette)：明确主色调和点缀色，如 莫兰迪色系, 赛博朋克蓝紫对比。
+5. 构图 (Composition)：如 黄金分割, 对称构图, 仰视特写。
+6. 配色 (Color Palette)：明确主色调和点缀色。
 7. 质感 (Texture)：如 8k分辨率, 电影级画质, 极其细腻的皮肤纹理。
-8. 环境 (Environment)：如 充满赛博细节的未来街道, 阳光倾洒的温馨咖啡馆角落。
+8. 环境 (Environment)：环境背景的详细布局。
 
 格式要求：
 - 前半部分为中文解析。
-- 结尾必须单独用 <english_prompt> 标签包裹一段极其专业、可直接供 Midjourney/Stable Diffusion 调用的纯英文完整 Prompt。不能有任何多余废话。`;
+- 结尾必须单独用 <english_prompt> 标签包裹一段纯英文完整 Prompt。不能有任何多余废话。`;
 
   const result = await callDoubaoAPI("/chat/completions", {
     model: DOUBAO_TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.7,
     max_tokens: 800
-  }, 12000); 
+  }, 30000); 
   const data = result.choices[0].message.content.trim();
   cache.imagePrompts.set(cacheKey, data);
   return data;
 };
 
-// 🌟 真实全网资讯检索 (采用自带 Google 搜索功能的底层 AI 接口，保证真实性)
+// 🌟 真正通过豆包大模型实现检索 (需在火山控制台为模型开启搜索插件)
 const fetchConvergenceNews = async (goal, wordsStr) => {
   const cacheKey = `${goal}_news`;
   if (cache.news.has(cacheKey)) return cache.news.get(cacheKey);
 
-  const prompt = `请立刻在互联网上搜索关于“${goal}”的最新行业资讯、新闻报道或真实市场案例。结合这些关键词语：“${wordsStr}”。
+  const prompt = `如果你具备联网搜索能力，请立刻在互联网上搜索关于“${goal}”的最新行业资讯、新闻报道或真实市场案例。结合关键词语：“${wordsStr}”。
 要求：
-1. 总结出3条关键信息，必须是客观真实的互联网资讯，绝不能捏造。
-2. 使用专业的中文进行回复，排版清晰。`;
-
-  const payload = {
-    contents: [{ parts: [{ text: prompt }] }],
-    tools: [{ google_search: {} }]
-  };
+1. 总结出3条关键信息，必须是客观真实的互联网资讯。
+2. 请务必在回复中附上新闻的真实参考来源（媒体名称或链接）。
+3. 使用专业的中文进行回复，排版清晰。`;
 
   try {
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`;
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    const result = await callDoubaoAPI("/chat/completions", {
+      model: DOUBAO_TEXT_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.5,
+      max_tokens: 500
+    }, 25000); 
     
-    if (!response.ok) throw new Error("检索服务不可用");
-    const result = await response.json();
-    
-    let text = "未能找到相关的真实资讯，可能该领域近期无热点。";
-    let sources = [];
-    
-    const candidate = result.candidates?.[0];
-    if (candidate?.content?.parts?.[0]?.text) {
-      text = candidate.content.parts[0].text;
-      const metadata = candidate.groundingMetadata;
-      if (metadata?.groundingAttributions) {
-        sources = metadata.groundingAttributions
-          .map(attr => ({ uri: attr.web?.uri, title: attr.web?.title }))
-          .filter(src => src.uri && src.title);
-      }
-    }
-    
-    // 来源去重
-    const uniqueSources = [];
-    const seenUris = new Set();
-    for (const s of sources) {
-      if (!seenUris.has(s.uri)) {
-        seenUris.add(s.uri);
-        uniqueSources.push(s);
-      }
-    }
-    
-    const output = { text, sources: uniqueSources };
+    const data = result.choices[0].message.content.trim();
+    // 豆包 API 通常直接将搜索来源整合在回答文本中
+    const output = { text: data, sources: [] }; 
     cache.news.set(cacheKey, output);
     return output;
   } catch (error) {
     console.error("Real News Fetch Error:", error);
-    return { text: "由于网络原因，真实资讯检索失败，请稍后重试。", sources: [], error: true };
+    return { text: "资讯获取失败。请确保您在火山引擎控制台中为当前填入的模型开启了【联网搜索】插件能力，或者检查网络连接。\n" + error.message, sources: [], error: true };
   }
 };
 
@@ -750,7 +710,7 @@ export default function BrainstormApp() {
     }
   };
 
-  // ========== 🚀 终极防超时串行收敛逻辑 (带真实资讯检索) ==========
+  // ========== 🚀 终极防超时串行收敛逻辑 (通过豆包大模型拉取资讯) ==========
   const handleRunConvergence = async () => {
     if (!convergenceGoal.trim()) return;
     
@@ -782,8 +742,8 @@ export default function BrainstormApp() {
         setConvergencePrompt(`❌ 提示词请求中断: ${promptErr.message}`);
       }
 
-      // 步骤 3：获取真实互联网资讯 (非阻塞 UI)
-      setConvergenceStatus({ step: 3, text: '检索全网真实行业资讯...' });
+      // 步骤 3：获取真实互联网资讯 (通过豆包模型搜索插件进行)
+      setConvergenceStatus({ step: 3, text: '检索全网行业资讯...' });
       try {
         const newsResult = await fetchConvergenceNews(convergenceGoal.trim(), allWordsStr);
         setConvergenceNews(newsResult);
@@ -1122,18 +1082,6 @@ export default function BrainstormApp() {
                             <div className="text-white/80 leading-loose whitespace-pre-wrap text-sm overflow-y-auto custom-scrollbar pr-2 flex-1">
                                {convergenceNews.text}
                             </div>
-                            {convergenceNews.sources && convergenceNews.sources.length > 0 && (
-                              <div className="mt-2 pt-4 border-t border-white/10 shrink-0">
-                                <h5 className="text-xs font-bold text-white/50 mb-3 uppercase tracking-wider">真实参考来源</h5>
-                                <div className="flex flex-col gap-2 max-h-[140px] overflow-y-auto custom-scrollbar">
-                                  {convergenceNews.sources.map((source, idx) => (
-                                    <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="group flex flex-col p-2.5 bg-black/20 hover:bg-black/40 border border-white/5 hover:border-amber-500/30 rounded-lg transition-all">
-                                      <span className="text-amber-200/80 font-medium group-hover:text-amber-400 transition-colors line-clamp-1 text-xs">{source.title}</span>
-                                    </a>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
                           </div>
                         )
                     ) : convergenceStatus.step >= 3 ? (
