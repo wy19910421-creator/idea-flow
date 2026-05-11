@@ -2,16 +2,6 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Sparkles, Download, Trash2, History, X, Loader2, Maximize, MousePointer2, Zap, Image as ImageIcon, Compass, Newspaper, Quote, Copy, Check } from 'lucide-react';
 
 // ==========================================
-// 🚨 豆包 API 配置（已填入你的信息）
-// ==========================================
-const DOUBAO_CONFIG = {
-  API_KEY: "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d", // 你的豆包API Key
-  TEXT_ENDPOINT_ID: "ep-20260510220258-bx5rk", // 你的文本大模型Endpoint ID
-  IMAGE_ENDPOINT_ID: "ep-20260509185423-hmwqk", // 【需补充】你的豆包文生图模型Endpoint ID（若有）
-  BASE_URL: "https://open.volcengineapi.com/api/v2/endpoint"
-};
-
-// ==========================================
 // 🌌 Binary Tree Canvas Animation Component
 // ==========================================
 const BinaryTreeCanvas = () => {
@@ -110,160 +100,121 @@ const BinaryTreeCanvas = () => {
 };
 
 // ==========================================
-// 📌 补充缺失的 Node 组件（原代码未定义）
-// ==========================================
-const Node = ({ node, onClick, onRightClick }) => {
-  return (
-    <div
-      onClick={onClick}
-      onContextMenu={onRightClick}
-      style={{
-        position: 'absolute',
-        left: node.x - node.size / 2,
-        top: node.y - node.size / 2,
-        width: node.size,
-        height: node.size,
-        borderRadius: '50%',
-        background: node.isRoot 
-          ? 'rgba(52, 211, 153, 0.2)' 
-          : node.isSelected 
-            ? 'rgba(245, 158, 11, 0.2)' 
-            : 'rgba(255, 255, 255, 0.08)',
-        border: node.isSelected 
-          ? '2px solid rgba(245, 158, 11, 0.8)' 
-          : '1px solid rgba(255, 255, 255, 0.2)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-        backdropFilter: 'blur(10px)',
-        transition: 'all 0.3s ease',
-        boxShadow: node.isSelected 
-          ? '0 0 20px rgba(245, 158, 11, 0.4)' 
-          : '0 0 10px rgba(255, 255, 255, 0.05)'
-      }}
-      className="hover:bg-white/15"
-    >
-      <span className="text-white font-medium">{node.text}</span>
-      <span className="text-xs text-white/50 mt-1">{node.en}</span>
-      {node.isLoading && (
-        <Loader2 
-          size={16} 
-          className="absolute bottom-2 animate-spin text-emerald-400" 
-        />
-      )}
-    </div>
-  );
-};
-
-// ==========================================
 // 🚀 豆包 API 通用请求函数
 // ==========================================
-const requestDouBao = async (endpointId, payload) => {
+const requestDouBao = async (prompt, systemPrompt = "", temperature = 0.8, topP = 0.9) => {
+  const DOUBAO_API_URL = "https://open.volcengineapi.com/api/v2/endpoint/ep-20260510220258-bx5rk/chat/completions";
+  const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
+  
+  const payload = {
+    model: "doubao-pro",
+    messages: [
+      ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+      { role: "user", content: prompt }
+    ],
+    temperature,
+    top_p: topP,
+    max_tokens: 2048
+  };
+
   try {
-    const response = await fetch(`${DOUBAO_CONFIG.BASE_URL}/${endpointId}/chat`, {
-      method: 'POST',
+    const response = await fetch(DOUBAO_API_URL, {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DOUBAO_CONFIG.API_KEY}`
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${DOUBAO_API_KEY}`
       },
-      body: JSON.stringify({
-        messages: [
-          { role: "user", content: payload.prompt }
-        ],
-        temperature: 0.8, // 创意性参数
-        max_tokens: 2000
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
-      throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     const result = await response.json();
-    if (result.data && result.data.choices && result.data.choices.length > 0) {
-      return result.data.choices[0].message.content;
+    if (result.choices && result.choices.length > 0) {
+      return result.choices[0].message.content.trim();
     }
-    throw new Error("豆包API返回格式异常");
+    return "";
   } catch (error) {
-    console.error("豆包API请求错误:", error);
-    throw error;
+    console.error("DouBao API Request Error:", error);
+    return "";
   }
 };
 
-// --- AI 关联词生成（替换原Gemini调用）---
+// --- AI API Integration (使用豆包API) ---
 const generateRelatedWords = async (word) => {
   const prompt = `你是一个专业的创意发散和头脑风暴助手。给定词语：“${word}”。请发散出7到8个具有网感、创意性强的相关词汇或短语。同时提供每个词的英文翻译。请严格按照以下JSON数组格式返回，不要包含任何其他说明文字：[{"word": "中文词", "en": "English Word"}]`;
-
+  
   try {
-    const responseText = await requestDouBao(DOUBAO_CONFIG.TEXT_ENDPOINT_ID, { prompt });
-    return JSON.parse(responseText);
+    const jsonStr = await requestDouBao(prompt, "你必须严格按照指定的JSON格式返回结果，不添加任何额外内容", 0.7, 0.8);
+    return JSON.parse(jsonStr);
   } catch (error) {
-    console.error("关联词生成失败:", error);
-    // 降级兜底数据
+    console.error("AI Generation Error:", error);
+    // Fallback data if API fails
     return Array.from({ length: 7 }).map((_, i) => ({ word: `关联词${i+1}`, en: `Related ${i+1}` }));
   }
 };
 
-// --- 创意文案生成（替换原Gemini调用）---
 const generateCreativeIdea = async (words) => {
   const prompt = `基于以下选择的关键词：${words.join(', ')}。请帮我生成一段具有“网感”、极具吸引力的创意文案或者概念策划。字数控制在200字左右，排版美观，适合小红书或社交媒体传播。`;
   
   try {
-    return await requestDouBao(DOUBAO_CONFIG.TEXT_ENDPOINT_ID, { prompt });
+    const result = await requestDouBao(prompt, "你是专业的社交媒体创意文案策划师，擅长创作有网感、吸引力强的文案", 0.9, 0.9);
+    return result || "生成创意失败，请检查网络后重试。";
   } catch (error) {
-    console.error("创意生成失败:", error);
+    console.error("Idea Generation Error:", error);
     return "生成创意失败，请检查网络后重试。";
   }
 };
 
-// --- 灵感碰撞（关联创意）生成（替换原Gemini调用）---
 const generateConnection = async (words) => {
   const prompt = `作为一个跨界创意大师，请找出以下几个词语之间意想不到的、深刻的隐秘联系，并给出一个基于这些词的跨界产品或营销点子：${words.join(', ')}。请控制在150字以内，语言要具有启发性和高级感。`;
   
   try {
-    return await requestDouBao(DOUBAO_CONFIG.TEXT_ENDPOINT_ID, { prompt });
+    const result = await requestDouBao(prompt, "你是跨界创意大师，擅长发现不同概念间的隐秘联系并提出创新点子", 0.85, 0.9);
+    return result || "灵感碰撞失败，请检查网络后重试。";
   } catch (error) {
-    console.error("灵感碰撞失败:", error);
+    console.error("Connection Generation Error:", error);
     return "灵感碰撞失败，请检查网络后重试。";
   }
 };
 
-// --- 文生图（启用豆包API，需补充文生图Endpoint ID）---
 const generateConceptImage = async (promptText) => {
-  // 若有豆包文生图Endpoint ID，填入 DOUBAO_CONFIG.IMAGE_ENDPOINT_ID
-  if (DOUBAO_CONFIG.IMAGE_ENDPOINT_ID) {
-    try {
-      const response = await fetch(`${DOUBAO_CONFIG.BASE_URL}/${DOUBAO_CONFIG.IMAGE_ENDPOINT_ID}/text2image`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${DOUBAO_CONFIG.API_KEY}`
-        },
-        body: JSON.stringify({
-          req_key: "high_aes_general_v20",
-          prompt: promptText,
-          model_version: "general_v2.0",
-          req_schedule_conf: "general_v20_9B_bg"
-        })
-      });
-
-      const result = await response.json();
-      if (result.data && result.data.image_url) {
-        return result.data.image_url;
-      }
-      throw new Error("文生图API返回无图片地址");
-    } catch (error) {
-      console.error("豆包文生图失败:", error);
-    }
+  // 🚀 豆包 (火山引擎) 绘图 API 调用
+  try {
+    const DOUBAO_API_URL = "https://open.volcengineapi.com/api/v2/endpoint/ep-20260510220258-bx5rk/text2image";
+    const DOUBAO_API_KEY = "ark-39bf3f1b-08bc-4f29-b3ad-a4315e8b9153-f639d";
+    
+    const payload = {
+      req_key: "high_aes_general_v20",
+      prompt: promptText,
+      model_version: "general_v2.0",
+      req_schedule_conf: "general_v20_9B_bg"
+    };
+    
+    const response = await fetch(DOUBAO_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DOUBAO_API_KEY}`
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    const result = await response.json();
+    // 根据豆包实际返回的JSON结构获取图片 URL/Base64 并返回
+    if (result.data && result.data.image_url) return result.data.image_url;
+  } catch (error) {
+    console.error("Doubao Image Generation Error:", error);
   }
 
-  // 降级到Google Imagen（需自行补充Key，或仅保留豆包逻辑）
-  const fallbackPrompt = `Abstract, high-quality, conceptual 3d render representing this concept: ${promptText}. Beautiful dramatic lighting, glowing elements, deep purple and emerald green color palette, glassmorphism style, masterpiece.`;
-  const payload = { instances: { prompt: fallbackPrompt }, parameters: { "sampleCount": 1 } };
+  // --- 降级方案 (保留原Gemini Imagen调用) ---
+  const prompt = `Abstract, high-quality, conceptual 3d render representing this concept: ${promptText}. Beautiful dramatic lighting, glowing elements, deep purple and emerald green color palette, glassmorphism style, masterpiece.`;
+  const payload = { instances: { prompt: prompt }, parameters: { "sampleCount": 1 } };
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=`;
+  
   try {
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=`; // 需补充Google Key
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -274,12 +225,13 @@ const generateConceptImage = async (promptText) => {
       return `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
     }
   } catch (error) {
-    console.error("Imagen降级失败:", error);
+    console.error("Image Generation Error:", error);
   }
+  
   return null;
 };
 
-// --- 文生图提示词生成（替换原Gemini调用）---
+// --- New Features AI Integration (Prompt & News) ---
 const generateImagePrompt = async (word) => {
   const prompt = `请为概念词“${word}”创作一段极其详细的【中英双语】文生图提示词(Prompt)。
 
@@ -297,29 +249,52 @@ const generateImagePrompt = async (word) => {
 3. 在最后单独提供一段仅供机器读取的【纯英文完整 Prompt 组合】，并强制使用 <english_prompt> 和 </english_prompt> 标签将其包裹起来。`;
 
   try {
-    return await requestDouBao(DOUBAO_CONFIG.TEXT_ENDPOINT_ID, { prompt });
+    const result = await requestDouBao(prompt, "你是专业的文生图提示词创作专家，擅长创作详细、专业、高质量的中英双语提示词", 0.7, 0.85);
+    return result || `主体内容 (Subject): 抽象的 ${word}\n风格 (Style): 高级玻璃质感 (Glassmorphism)\n<english_prompt>A stunning 3d render of ${word}, abstract concept, vivid colors, highly detailed, masterpiece.</english_prompt>`;
   } catch (error) {
-    console.error("提示词生成失败:", error);
+    console.error("Prompt Generation Error:", error);
     return `主体内容 (Subject): 抽象的 ${word}\n风格 (Style): 高级玻璃质感 (Glassmorphism)\n<english_prompt>A stunning 3d render of ${word}, abstract concept, vivid colors, highly detailed, masterpiece.</english_prompt>`;
   }
 };
 
-// --- 关键词资讯获取（替换原Gemini调用）---
 const fetchKeywordNews = async (word) => {
-  const prompt = `Search for the latest news, trending topics, or deeper insights related to the concept: "${word}". Summarize 3 key informative points in Chinese. Make it engaging and professional.`;
+  const prompt = `搜索与概念“${word}”相关的最新新闻、热门话题或深度见解。用中文总结3个关键信息点，内容要有吸引力且专业。同时提供相关的资讯来源链接和标题（至少2个）。`;
   
   try {
-    const text = await requestDouBao(DOUBAO_CONFIG.TEXT_ENDPOINT_ID, { prompt });
-    return { text, sources: [] }; // 豆包暂不返回溯源链接，若需可自行扩展
+    const result = await requestDouBao(prompt, "你是专业的资讯分析师，擅长收集和总结最新的行业资讯与热点话题，能提供准确的来源信息", 0.7, 0.8);
+    
+    // 解析结果（实际场景可根据返回格式优化解析逻辑）
+    let text = result || "暂无相关新闻资讯。";
+    let sources = [];
+    
+    // 简单的来源提取逻辑（可根据实际返回格式调整）
+    const sourceRegex = /(https?:\/\/[^\s]+).*?(【.*?】|《.*?》|".*?")/g;
+    let matches;
+    while ((matches = sourceRegex.exec(result)) !== null) {
+      sources.push({
+        uri: matches[1],
+        title: matches[2]?.replace(/[【】《》""]/g, '') || `相关资讯-${sources.length + 1}`
+      });
+    }
+    
+    // 去重
+    const uniqueSources = [];
+    const seenUris = new Set();
+    for (const s of sources) {
+      if (!seenUris.has(s.uri)) {
+        seenUris.add(s.uri);
+        uniqueSources.push(s);
+      }
+    }
+    
+    return { text, sources: uniqueSources };
   } catch (error) {
-    console.error("资讯获取失败:", error);
+    console.error("News Fetch Error:", error);
     return { text: "获取资讯失败，请检查网络后重试。", sources: [] };
   }
 };
 
-// ==========================================
-// 🎮 画布平移缩放 Hook
-// ==========================================
+// Hook for Canvas Panning and Zooming
 const usePanZoom = (containerRef) => {
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const isDragging = useRef(false);
@@ -371,9 +346,7 @@ const usePanZoom = (containerRef) => {
   return { transform, isDragging, onPointerDown, onPointerMove, onPointerUp, onWheel, setTransform };
 };
 
-// ==========================================
-// 📱 移动端长按 Hook
-// ==========================================
+// Hook for mobile long press
 const useLongPress = (callback, ms = 500) => {
   const timeout = useRef();
   const start = useCallback((e) => {
@@ -392,9 +365,30 @@ const useLongPress = (callback, ms = 500) => {
   };
 };
 
-// ==========================================
-// 🎯 主应用组件
-// ==========================================
+// Node Component (补充缺失的Node组件定义)
+const Node = ({ node, onClick, onRightClick }) => {
+  return (
+    <div
+      className={`absolute rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer
+        ${node.isRoot ? 'bg-emerald-500/20 border-emerald-400/50' : 'bg-white/5 border-white/10'}
+        ${node.isSelected ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-[#160B2A]' : ''}
+        ${node.isLoading ? 'animate-pulse' : ''}
+        border transition-all duration-300 hover:scale-105`}
+      style={{
+        left: node.x - node.size / 2,
+        top: node.y - node.size / 2,
+        width: node.size,
+        height: node.size,
+      }}
+      onClick={() => onClick()}
+      onContextMenu={onRightClick}
+    >
+      <span className="text-white font-medium text-center">{node.text}</span>
+      <span className="text-xs text-white/50 mt-1">{node.en}</span>
+    </div>
+  );
+};
+
 export default function BrainstormApp() {
   const containerRef = useRef(null);
   const { transform, isDragging, onPointerDown, onPointerMove, onPointerUp, onWheel, setTransform } = usePanZoom(containerRef);
@@ -541,7 +535,7 @@ export default function BrainstormApp() {
 
   const handleGenerateInsight = async () => {
     const selectedWords = nodes.filter(n => n.isSelected).map(n => n.text);
-    if (selectedWords.length < 2) return;
+    if (selectedWords.length < 2) return; 
     
     setIsInsightModalOpen(true);
     setIsGeneratingInsight(true);
@@ -552,140 +546,111 @@ export default function BrainstormApp() {
     setIsGeneratingInsight(false);
   };
 
-  const handleGenerateConceptImage = async () => {
-    if (!generatedIdea) return;
-    setIsGeneratingImage(true);
-    setConceptImage(null);
+  const handleConfirmExplore = async () => {
+    const selectedNodes = nodes.filter(n => n.isSelected);
+    if (selectedNodes.length !== 1) return;
     
-    const imageUrl = await generateConceptImage(generatedIdea);
-    setConceptImage(imageUrl);
-    setIsGeneratingImage(false);
-  };
-
-  const handleOpenDetailModal = async (nodeId) => {
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return;
-    
+    const targetWord = selectedNodes[0].text;
     setIsDetailModalOpen(true);
     setIsGeneratingDetail(true);
-    setDetailData(prev => ({ ...prev, word: node.text }));
-    
-    // 并行生成提示词和资讯
-    const [prompt, newsRes] = await Promise.all([
-      generateImagePrompt(node.text),
-      fetchKeywordNews(node.text)
-    ]);
-    
-    setDetailData({
-      word: node.text,
-      prompt,
-      image: null,
-      newsText: newsRes.text,
-      newsSources: newsRes.sources
-    });
-    setIsGeneratingDetail(false);
-  };
+    setDetailData({ word: targetWord, prompt: '', image: null, newsText: '', newsSources: [] });
 
-  const handleCopyPrompt = () => {
-    // 提取纯英文prompt
-    const promptMatch = detailData.prompt.match(/<english_prompt>([\s\S]*?)<\/english_prompt>/);
-    const copyText = promptMatch ? promptMatch[1] : detailData.prompt;
-    
-    navigator.clipboard.writeText(copyText)
-      .then(() => {
-        setIsPromptCopied(true);
-        setTimeout(() => setIsPromptCopied(false), 2000);
-      })
-      .catch(err => console.error("复制失败:", err));
-  };
+    try {
+      const promptPromise = generateImagePrompt(targetWord);
+      const newsPromise = fetchKeywordNews(targetWord);
+      const [imgPrompt, newsResult] = await Promise.all([promptPromise, newsPromise]);
 
-  const handleGenerateDetailImage = async () => {
-    const promptMatch = detailData.prompt.match(/<english_prompt>([\s\S]*?)<\/english_prompt>/);
-    const promptText = promptMatch ? promptMatch[1] : detailData.prompt;
-    
-    setIsGeneratingImage(true);
-    const imageUrl = await generateConceptImage(promptText);
-    setDetailData(prev => ({ ...prev, image: imageUrl }));
-    setIsGeneratingImage(false);
-  };
+      setDetailData(prev => ({ 
+        ...prev, 
+        prompt: imgPrompt, 
+        newsText: newsResult.text, 
+        newsSources: newsResult.sources 
+      }));
+      
+      setIsGeneratingDetail(false); 
 
-  const handleResetCanvas = () => {
-    setNodes([]);
-    setLinks([]);
-    setIsInputCenter(true);
-    setInputValue('');
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      setTransform({ x: rect.width / 2, y: rect.height / 2, scale: 1 });
+      const match = imgPrompt.match(/<english_prompt>([\s\S]*?)<\/english_prompt>/i);
+      const drawingPrompt = match ? match[1].trim() : imgPrompt.substring(0, 300);
+
+      const imgResult = await generateConceptImage(drawingPrompt);
+      setDetailData(prev => ({ ...prev, image: imgResult }));
+    } catch (err) {
+      console.error("Explore Error:", err);
+      setIsGeneratingDetail(false);
     }
   };
 
-  const handleExportIdea = () => {
-    const exportData = {
-      rootWord: nodes.find(n => n.isRoot)?.text || "",
-      selectedWords: nodes.filter(n => n.isSelected).map(n => n.text),
-      generatedIdea,
-      timestamp: new Date().toISOString()
-    };
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `创意-${exportData.rootWord || '未命名'}-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const clearCanvas = () => {
+    setNodes([]);
+    setLinks([]);
+    setIsInputCenter(true);
+    setTransform({ x: window.innerWidth / 2, y: window.innerHeight / 2, scale: 1 });
   };
 
-  // ==========================================
-  // 🎨 渲染部分
-  // ==========================================
   return (
-    <div className="relative w-full h-screen bg-black overflow-hidden">
-      {/* 二进制树背景画布 */}
-      <BinaryTreeCanvas />
+    <div className="relative w-full h-screen overflow-hidden bg-[#160B2A] text-white selection:bg-emerald-500/30">
       
-      {/* 主交互画布容器 */}
+      {/* 1. Deep Purple Base Background (Revealed completely when tree fades) */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#2a164b] via-[#160b2a] to-[#0f071e] pointer-events-none -z-10" />
+      
+      {/* Dynamic Binary Tree Background (Fades out when input is submitted) */}
       <div 
-        ref={containerRef}
+        className={`absolute inset-0 transition-opacity duration-1000 ease-in-out pointer-events-none z-0
+          ${isInputCenter ? 'opacity-100' : 'opacity-0'}`}
+      >
+        <BinaryTreeCanvas />
+        {/* Glow overlays to blend tree with background */}
+        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-emerald-500/10 blur-[120px] rounded-full" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-amber-500/10 blur-[120px] rounded-full" />
+      </div>
+
+      {/* Main Canvas Area (Draggable) */}
+      <div
         id="canvas-bg"
-        className="relative w-full h-full overflow-hidden"
+        ref={containerRef}
+        className="absolute inset-0 cursor-grab active:cursor-grabbing touch-none z-10"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
         onWheel={onWheel}
-        style={{ touchAction: 'manipulation' }}
       >
-        {/* 节点连线 */}
-        <svg className="absolute inset-0 w-full h-full pointer-events-none">
-          {activeLinks.map((link, i) => {
-            const source = nodes.find(n => n.id === link.source);
-            const target = nodes.find(n => n.id === link.target);
-            if (!source || !target) return null;
-            return (
-              <line
-                key={`link-${i}`}
-                x1={source.x}
-                y1={source.y}
-                x2={target.x}
-                y2={target.y}
-                stroke="rgba(52, 211, 153, 0.3)"
-                strokeWidth="1.5"
-                strokeDasharray="4 4"
-                opacity="0.7"
-              />
-            );
-          })}
-        </svg>
-
-        {/* 节点渲染 */}
-        <div 
-          className="absolute inset-0"
+        <div
           style={{
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
             transformOrigin: '0 0',
             transition: isDragging.current ? 'none' : 'transform 0.1s ease-out'
           }}
+          className="absolute top-0 left-0"
         >
+          {/* Edges */}
+          <svg className="absolute top-0 left-0 overflow-visible pointer-events-none">
+            {activeLinks.map((link, i) => {
+              const source = nodes.find(n => n.id === link.source);
+              const target = nodes.find(n => n.id === link.target);
+              if (!source || !target) return null;
+              
+              return (
+                <g key={`${link.source}-${link.target}`}>
+                  <line
+                    x1={source.x} y1={source.y} x2={target.x} y2={target.y}
+                    stroke={target.isSelected ? "rgba(245, 158, 11, 0.4)" : "rgba(255, 255, 255, 0.15)"}
+                    strokeWidth={target.isSelected ? 3 : 1.5}
+                    className="transition-all duration-500 ease-out"
+                  />
+                  {source.isLoading && (
+                    <line
+                      x1={source.x} y1={source.y} x2={target.x} y2={target.y}
+                      stroke="rgba(16, 185, 129, 0.5)" strokeWidth="2" strokeDasharray="4 8"
+                      className="animate-[dash_1s_linear_infinite]"
+                    />
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Nodes */}
           {nodes.map(node => (
             <Node
               key={node.id}
@@ -695,232 +660,145 @@ export default function BrainstormApp() {
             />
           ))}
         </div>
-
-        {/* 中心输入框 */}
-        {isInputCenter && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-full max-w-md px-4">
-            <form onSubmit={handleInitialSubmit} className="relative">
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="输入核心创意词，开启头脑风暴..."
-                className="w-full py-4 px-6 bg-white/10 backdrop-blur-lg border border-white/20 rounded-full text-white text-lg placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-              />
-              <button
-                type="submit"
-                className="absolute right-2 top-1/2 -translate-y-1/2 bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-full transition-colors"
-              >
-                <Sparkles size={20} />
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* 顶部操作栏 */}
-        {!isInputCenter && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex gap-2 bg-black/50 backdrop-blur-lg p-2 rounded-full border border-white/10">
-            <button
-              onClick={handleGenerateIdea}
-              disabled={nodes.filter(n => n.isSelected).length === 0 && !nodes.find(n => n.isRoot)}
-              className="flex items-center gap-1 px-4 py-2 rounded-full bg-emerald-500/80 hover:bg-emerald-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <Sparkles size={16} />
-              <span>确定发掘</span>
-            </button>
-            <button
-              onClick={handleGenerateInsight}
-              disabled={nodes.filter(n => n.isSelected).length < 2}
-              className="flex items-center gap-1 px-4 py-2 rounded-full bg-amber-500/80 hover:bg-amber-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <Zap size={16} />
-              <span>灵感碰撞</span>
-            </button>
-            <button
-              onClick={handleExportIdea}
-              disabled={nodes.length === 0}
-              className="flex items-center gap-1 px-4 py-2 rounded-full bg-blue-500/80 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <Download size={16} />
-              <span>导出创意</span>
-            </button>
-            <button
-              onClick={handleResetCanvas}
-              className="flex items-center gap-1 px-4 py-2 rounded-full bg-red-500/80 hover:bg-red-500 text-white transition-colors"
-            >
-              <Trash2 size={16} />
-              <span>重置</span>
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* 创意生成弹窗 */}
-      {isIdeaModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-3xl bg-gray-900/90 backdrop-blur-lg border border-white/10 rounded-2xl overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-white/10">
-              <h3 className="text-xl font-bold text-white">创意生成结果</h3>
-              <button
-                onClick={() => setIsIdeaModalOpen(false)}
-                className="p-2 rounded-full hover:bg-white/10 text-white transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
-              {isGenerating ? (
-                <div className="flex flex-col items-center justify-center py-8">
-                  <Loader2 size={32} className="animate-spin text-emerald-400 mb-4" />
-                  <p className="text-white/70">正在生成创意...</p>
-                </div>
-              ) : (
-                <>
-                  <div className="prose prose-invert max-w-none">
-                    <Quote className="text-emerald-400 mb-4" />
-                    <p className="text-white leading-relaxed whitespace-pre-line">{generatedIdea}</p>
-                  </div>
-                  
-                  <div className="mt-6">
-                    <button
-                      onClick={handleGenerateConceptImage}
-                      disabled={isGeneratingImage}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {isGeneratingImage ? <Loader2 size={16} className="animate-spin" /> : <ImageIcon size={16} />}
-                      <span>生成概念图</span>
-                    </button>
-                    
-                    {conceptImage && (
-                      <div className="mt-4 rounded-xl overflow-hidden border border-white/10">
-                        <img 
-                          src={conceptImage} 
-                          alt="Concept visualization" 
-                          className="w-full h-auto object-cover"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+      {/* Top Navigation */}
+      <div className="absolute top-0 w-full p-6 flex justify-between items-start pointer-events-none z-20">
+        <div></div>
+        <div className="flex gap-3 pointer-events-auto">
+          <button onClick={clearCanvas} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/10 rounded-full text-sm font-medium transition-all text-white/80 hover:text-white">
+            <Trash2 size={16} /> <span className="hidden sm:inline">清空画布</span>
+          </button>
+          <button onClick={handleConfirmExplore} disabled={nodes.filter(n => n.isSelected).length !== 1} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-indigo-500 hover:to-blue-400 text-white shadow-lg shadow-blue-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed" title="请选中且仅选中一个词语进行具象化探索">
+            <Compass size={16} /> <span className="hidden sm:inline">确定发掘</span>
+          </button>
+          <button onClick={handleGenerateInsight} disabled={nodes.filter(n => n.isSelected).length < 2} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-400 hover:from-orange-400 hover:to-amber-300 text-white shadow-lg shadow-amber-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+            <Zap size={16} /> <span className="hidden sm:inline">灵感碰撞</span>
+          </button>
+          <button onClick={handleGenerateIdea} disabled={nodes.length === 0} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:from-emerald-300 text-white shadow-lg shadow-emerald-500/20 backdrop-blur-md border border-white/20 rounded-full text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+            <Sparkles size={16} /> <span className="hidden sm:inline">导出创意</span>
+          </button>
         </div>
-      )}
+      </div>
 
-      {/* 灵感碰撞弹窗 */}
-      {isInsightModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl bg-gray-900/90 backdrop-blur-lg border border-white/10 rounded-2xl overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-white/10">
-              <h3 className="text-xl font-bold text-white">灵感碰撞</h3>
-              <button
-                onClick={() => setIsInsightModalOpen(false)}
-                className="p-2 rounded-full hover:bg-white/10 text-white transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
-              {isGeneratingInsight ? (
-                <div className="flex flex-col items-center justify-center py-8">
-                  <Loader2 size={32} className="animate-spin text-amber-400 mb-4" />
-                  <p className="text-white/70">正在碰撞灵感...</p>
-                </div>
-              ) : (
-                <div className="prose prose-invert max-w-none">
-                  <Zap className="text-amber-400 mb-4" />
-                  <p className="text-white leading-relaxed whitespace-pre-line">{generatedInsight}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Center / Bottom Glowing Input Capsule */}
+      <div 
+        className={`absolute w-full flex justify-center pointer-events-none transition-all duration-700 ease-in-out z-30 ${
+          isInputCenter ? 'top-[60%] -translate-y-1/2' : 'bottom-8'
+        }`}
+      >
+        <form 
+          onSubmit={handleInitialSubmit}
+          className={`pointer-events-auto relative group flex items-center bg-[#1a0f2e]/60 backdrop-blur-xl border p-2 transition-all duration-700
+            ${isInputCenter 
+              ? 'w-[90%] max-w-xl rounded-[3rem] border-emerald-400/50 glowing-capsule' 
+              : 'w-[90%] max-w-md rounded-full border-white/20 shadow-emerald-500/10'
+            }`}
+        >
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="输入起始词或短句，开启发散..."
+            className="w-full bg-transparent border-none outline-none text-white px-8 py-4 placeholder:text-white/50 text-lg font-medium"
+          />
+          <button 
+            type="submit"
+            className={`absolute right-3 p-4 rounded-full transition-colors flex items-center justify-center
+              ${isInputCenter ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(52,211,153,0.8)]' : 'bg-emerald-500/80 hover:bg-emerald-400 text-white p-3 right-2'}`}
+          >
+            <Sparkles size={isInputCenter ? 24 : 20} />
+          </button>
+        </form>
+      </div>
 
-      {/* 节点详情弹窗 */}
+      {/* Detail Explore Modal */}
       {isDetailModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-3xl bg-gray-900/90 backdrop-blur-lg border border-white/10 rounded-2xl overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-white/10">
-              <h3 className="text-xl font-bold text-white">{detailData.word} · 深度解析</h3>
-              <button
-                onClick={() => setIsDetailModalOpen(false)}
-                className="p-2 rounded-full hover:bg-white/10 text-white transition-colors"
-              >
-                <X size={20} />
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-8">
+          <div className="bg-[#1a0f2e] border border-blue-500/30 rounded-3xl w-full max-w-6xl h-full max-h-[90vh] shadow-[0_0_80px_rgba(59,130,246,0.15)] flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5 shrink-0">
+              <h3 className="text-2xl font-bold flex items-center gap-3 text-blue-400">
+                <Compass size={24} />
+                探索核心概念：<span className="text-white">「{detailData.word}」</span>
+              </h3>
+              <button onClick={() => setIsDetailModalOpen(false)} className="text-white/50 hover:text-white transition-colors p-2 bg-white/5 rounded-full hover:bg-white/10">
+                <X size={24} />
               </button>
             </div>
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
+            
+            <div className="p-6 overflow-y-auto flex-1 text-white/90">
               {isGeneratingDetail ? (
-                <div className="flex flex-col items-center justify-center py-8">
-                  <Loader2 size={32} className="animate-spin text-blue-400 mb-4" />
-                  <p className="text-white/70">正在解析关键词...</p>
+                <div className="flex flex-col items-center justify-center h-full text-blue-400 gap-6">
+                  <Loader2 className="animate-spin" size={60} />
+                  <p className="animate-pulse text-xl">正在为您生成专属提示词、画面及全网资讯...</p>
                 </div>
               ) : (
-                <div className="space-y-6">
-                  {/* 文生图提示词 */}
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-lg font-semibold text-blue-400 flex items-center gap-2">
-                        <Compass size={18} />
-                        文生图提示词
-                      </h4>
-                      <button
-                        onClick={handleCopyPrompt}
-                        className="flex items-center gap-1 px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-colors"
-                      >
-                        {isPromptCopied ? <Check size={14} /> : <Copy size={14} />}
-                        <span>{isPromptCopied ? '已复制' : '复制Prompt'}</span>
-                      </button>
-                    </div>
-                    <div className="bg-black/50 p-4 rounded-lg border border-white/10 text-white text-sm whitespace-pre-line">
-                      {detailData.prompt}
-                    </div>
-                    
-                    <button
-                      onClick={handleGenerateDetailImage}
-                      disabled={isGeneratingImage}
-                      className="mt-3 flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {isGeneratingImage ? <Loader2 size={16} className="animate-spin" /> : <ImageIcon size={16} />}
-                      <span>生成概念图</span>
-                    </button>
-                    
-                    {detailData.image && (
-                      <div className="mt-4 rounded-xl overflow-hidden border border-white/10">
-                        <img 
-                          src={detailData.image} 
-                          alt={`${detailData.word} concept`} 
-                          className="w-full h-auto object-cover"
-                        />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
+                  <div className="flex flex-col gap-6">
+                    <div className="bg-white/5 border border-white/10 p-5 rounded-2xl flex flex-col gap-3 relative">
+                      <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                        <h4 className="text-lg font-semibold flex items-center gap-2 text-indigo-300">
+                          <Quote size={18} />
+                          高维文生图提示词 (Prompt)
+                        </h4>
+                        {detailData.prompt && (
+                          <button
+                            onClick={() => {
+                              const cleanPrompt = detailData.prompt.replace(/<english_prompt>|<\/english_prompt>/gi, '').trim();
+                              navigator.clipboard.writeText(cleanPrompt);
+                              setIsPromptCopied(true);
+                              setTimeout(() => setIsPromptCopied(false), 2000);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-200 rounded-lg transition-all text-sm font-medium border border-indigo-500/30"
+                          >
+                            {isPromptCopied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                            {isPromptCopied ? <span className="text-emerald-400">已复制</span> : '一键复制'}
+                          </button>
+                        )}
                       </div>
-                    )}
+                      {detailData.prompt ? (
+                        <div className="font-mono text-sm text-white/80 bg-black/30 p-4 rounded-xl leading-relaxed whitespace-pre-wrap max-h-[220px] overflow-y-auto custom-scrollbar">
+                          {detailData.prompt.replace(/<english_prompt>|<\/english_prompt>/gi, '--- 纯英文整合版 ---')}
+                        </div>
+                      ) : (
+                        <div className="h-32 bg-white/5 animate-pulse rounded-xl"></div>
+                      )}
+                    </div>
+                    <div className="bg-white/5 border border-white/10 p-5 rounded-2xl flex-1 flex flex-col gap-3 min-h-[300px]">
+                      <h4 className="text-lg font-semibold flex items-center gap-2 text-indigo-300">
+                        <ImageIcon size={18} />
+                        概念具象图
+                      </h4>
+                      <div className="flex-1 w-full bg-black/40 rounded-xl overflow-hidden relative border border-white/5 flex items-center justify-center">
+                        {detailData.image ? (
+                          <img src={detailData.image} alt="Generated Concept" className="w-full h-full object-contain" />
+                        ) : (
+                          <div className="flex flex-col items-center gap-3 text-blue-400/50">
+                            <Loader2 className="animate-spin" size={32} />
+                            <span>豆包正在极速绘制中...</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-
-                  {/* 最新资讯 */}
-                  <div>
-                    <h4 className="text-lg font-semibold text-green-400 flex items-center gap-2 mb-2">
-                      <Newspaper size={18} />
-                      最新资讯
+                  <div className="bg-white/5 border border-white/10 p-6 rounded-2xl flex flex-col gap-5 overflow-hidden">
+                    <h4 className="text-xl font-semibold flex items-center gap-2 text-teal-300 shrink-0">
+                      <Newspaper size={20} />
+                      全网资讯与趋势
                     </h4>
-                    <div className="bg-black/50 p-4 rounded-lg border border-white/10 text-white text-sm">
-                      <p className="whitespace-pre-line">{detailData.newsText}</p>
-                      
+                    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar flex flex-col gap-6">
+                      <div className="text-white/80 leading-relaxed text-lg whitespace-pre-wrap">
+                        {detailData.newsText}
+                      </div>
                       {detailData.newsSources.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-white/10">
-                          <h5 className="text-white/70 text-xs mb-2">参考来源：</h5>
-                          <div className="flex flex-wrap gap-2">
-                            {detailData.newsSources.map((src, i) => (
-                              <a
-                                key={i}
-                                href={src.uri}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-400 hover:underline text-xs"
-                              >
-                                {src.title}
+                        <div className="mt-4 pt-6 border-t border-white/10">
+                          <h5 className="text-sm font-bold text-white/50 mb-4 uppercase tracking-wider">深度阅读链接</h5>
+                          <div className="flex flex-col gap-3">
+                            {detailData.newsSources.map((source, idx) => (
+                              <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="group flex flex-col p-3 bg-black/20 hover:bg-black/40 border border-white/5 hover:border-teal-500/30 rounded-xl transition-all">
+                                <span className="text-teal-200 font-medium group-hover:text-teal-400 transition-colors line-clamp-1">{source.title}</span>
+                                <span className="text-xs text-white/40 mt-1 truncate">{source.uri}</span>
                               </a>
                             ))}
                           </div>
@@ -935,17 +813,53 @@ export default function BrainstormApp() {
         </div>
       )}
 
-      {/* 操作提示 */}
-      <div className="absolute bottom-4 left-4 z-20 flex flex-col gap-2">
-        <div className="bg-black/50 backdrop-blur-lg p-2 rounded-lg border border-white/10 text-white text-xs flex items-center gap-2">
-          <MousePointer2 size={14} />
-          <span>右键/长按选中节点</span>
+      {/* Idea Modal */}
+      {isIdeaModalOpen && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1e1136] border border-white/10 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
+              <h3 className="text-xl font-bold flex items-center gap-2 text-amber-400"><Sparkles size={20} /> 创意文案生成</h3>
+              <button onClick={() => setIsIdeaModalOpen(false)} className="text-white/50 hover:text-white transition-colors"><X size={24} /></button>
+            </div>
+            <div className="p-8 overflow-y-auto flex-1 text-white/90 leading-relaxed whitespace-pre-wrap text-lg">
+              {isGenerating ? (
+                <div className="flex flex-col items-center justify-center py-12 text-emerald-400 gap-4"><Loader2 className="animate-spin" size={40} /><p className="animate-pulse">AI正在将您的灵感火花串联...</p></div>
+              ) : (
+                <p>{generatedIdea}</p>
+              )}
+            </div>
+            {!isGenerating && (
+              <div className="p-6 border-t border-white/5 bg-black/20 flex justify-end gap-3">
+                <button onClick={() => navigator.clipboard.writeText(generatedIdea)} className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors font-medium"><Download size={18} /> 复制文案</button>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="bg-black/50 backdrop-blur-lg p-2 rounded-lg border border-white/10 text-white text-xs flex items-center gap-2">
-          <Maximize size={14} />
-          <span>滚轮缩放 / 拖拽平移</span>
+      )}
+
+      {/* Insight Modal */}
+      {isInsightModalOpen && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1e1136] border border-white/10 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
+              <h3 className="text-xl font-bold flex items-center gap-2 text-amber-400"><Zap size={20} /> 灵感碰撞结果</h3>
+              <button onClick={() => setIsInsightModalOpen(false)} className="text-white/50 hover:text-white transition-colors"><X size={24} /></button>
+            </div>
+            <div className="p-8 overflow-y-auto flex-1 text-white/90 leading-relaxed whitespace-pre-wrap text-lg">
+              {isGeneratingInsight ? (
+                <div className="flex flex-col items-center justify-center py-12 text-emerald-400 gap-4"><Loader2 className="animate-spin" size={40} /><p className="animate-pulse">AI正在挖掘词语间的隐秘联系...</p></div>
+              ) : (
+                <p>{generatedInsight}</p>
+              )}
+            </div>
+            {!isGeneratingInsight && (
+              <div className="p-6 border-t border-white/5 bg-black/20 flex justify-end gap-3">
+                <button onClick={() => navigator.clipboard.writeText(generatedInsight)} className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors font-medium"><Download size={18} /> 复制灵感</button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
