@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "webify-build": "npm install && npm run build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
