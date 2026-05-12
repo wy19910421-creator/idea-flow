@@ -91,203 +91,130 @@ const BinaryTreeCanvas = () => {
 };
 
 // ==========================================
-// 🚀 豆包 API 集成 (Vercel 后端代理版 - 100% 安全)
+// 🧠 模拟AI数据生成器 (100% 本地运行，无网络请求)
 // ==========================================
-// ✅ 前端无任何 API Key 和模型 ID，彻底解决泄露问题
-// ✅ 自动处理跨域，国内访问速度极快
-// ✅ 所有请求通过 Vercel 美国/中国香港节点转发，绕过地区限制
-
-const fetchWithRetry = async (url, options, retries = 5) => {
-  const delays = [1000, 2000, 4000, 8000, 16000];
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await fetch(url, options);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`HTTP Error: ${response.status} - ${errorData.error || 'Unknown error'}`);
-      }
-      return await response.json();
-    } catch (err) {
-      if (i === retries - 1) throw err;
-      await new Promise(r => setTimeout(r, delays[i]));
-    }
-  }
+const wordDatabase = {
+  default: [
+    ["创意", "灵感", "头脑风暴", "思维导图", "发散思维", "概念", "视觉化"],
+    ["设计", "美学", "用户体验", "交互", "界面", "原型", "品牌"],
+    ["科技", "创新", "人工智能", "大数据", "云计算", "区块链", "元宇宙"],
+    ["生活", "方式", "极简主义", "可持续", "健康", "平衡", "幸福感"],
+    ["商业", "策略", "营销", "品牌", "增长", "转化", "用户"],
+    ["艺术", "表达", "创作", "媒介", "风格", "流派", "展览"],
+    ["教育", "学习", "知识", "技能", "成长", "思维", "认知"]
+  ],
+  reverse: [
+    ["反常识", "对立面", "颠覆", "逆向思维", "打破常规", "悖论", "反差"],
+    ["传统", "保守", "经典", "复古", "怀旧", "原始", "手工"],
+    ["慢生活", "离线", "断网", "独处", "安静", "自然", "有机"],
+    ["失败", "错误", "缺陷", "不完美", "空白", "留白", "虚无"],
+    ["过去", "历史", "传统", "古老", "传承", "遗产", "记忆"]
+  ],
+  vertical: [
+    ["细分领域", "垂直市场", "精准定位", "深度挖掘", "专业", "专家", "深耕"],
+    ["技术细节", "底层逻辑", "实现原理", "算法", "架构", "性能", "优化"],
+    ["用户画像", "人群细分", "需求分析", "痛点", "场景", "行为", "动机"],
+    ["产品功能", "模块", "组件", "交互细节", "流程", "状态", "反馈"]
+  ],
+  horizontal: [
+    ["同类产品", "竞品", "行业标杆", "参考案例", "最佳实践", "标准", "规范"],
+    ["相关领域", "交叉学科", "跨界", "融合", "协同", "生态", "产业链"],
+    ["替代方案", "不同方法", "其他视角", "新思路", "可能性", "选择", "选项"]
+  ]
 };
 
-// ==========================================
-// 🤖 统一的豆包API调用函数
-// ==========================================
-const callDoubaoAPI = async (payload, timeout = 35000) => {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    const response = await fetch('/api/doubao-text', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-    return await response.json();
-  } catch (error) {
-    if (error.name === 'AbortError') throw new Error("请求超时，请检查网络后重试");
-    console.error("网络请求底层错误:", error);
-    throw error;
-  }
-};
-
-// ==========================================
-// 📦 全局缓存
-// ==========================================
-const cache = {
-  relatedWords: new Map(),
-  creativeIdeas: new Map(),
-  connections: new Map(),
-  convergences: new Map(),
-  imagePrompts: new Map()
-};
-
-// ==========================================
-// 🧠 AI 功能实现 (极速发散与多模式)
-// ==========================================
-const generateRelatedWords = async (word, mode = 'default') => {
-  const cacheKey = `${mode}_${word}`;
-  if (cache.relatedWords.has(cacheKey)) return cache.relatedWords.get(cacheKey);
-
-  let systemPrompt = "";
-  if (mode === 'default') {
-    systemPrompt = `直接输出与“${word}”相关的7个网感词及英文，必须是严格的JSON数组格式：[{"word":"中文","en":"english"}]`;
-  } else if (mode === 'reverse') {
-    systemPrompt = `作为发散专家，直接输出与“${word}”完全对立、反常识或具强烈反差感的7个词及英文(如:夏天->羽绒服/冰雕)。必须严格JSON数组格式：[{"word":"中文","en":"english"}]`;
-  } else if (mode === 'vertical') {
-    systemPrompt = `作为发散专家，直接输出“${word}”的7个纵向深入、更细分的下层具体节点词及英文(如:猫->幼猫喂养/蓝金渐层)。必须严格JSON数组格式：[{"word":"中文","en":"english"}]`;
-  } else if (mode === 'horizontal') {
-    systemPrompt = `作为发散专家，直接输出与“${word}”同属于一个父类的7个横向平行概念词及英文(如:猫->狗/兔子/仓鼠)。必须严格JSON数组格式：[{"word":"中文","en":"english"}]`;
-  }
-
-  const payload = {
-    messages: [{ role: "user", content: systemPrompt }],
-    temperature: 0.7,
-    max_tokens: 250, 
-    response_format: { type: "json_object" }
-  };
-
-  try {
-    const result = await callDoubaoAPI(payload);
-    let jsonStr = result.choices[0].message.content;
-    jsonStr = jsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
-    
-    const data = JSON.parse(jsonStr);
-    const arrayData = Array.isArray(data) ? data : (data.words || data.result || Object.values(data)[0]);
-    
-    if (!Array.isArray(arrayData) || arrayData.length === 0) {
-      throw new Error("AI 返回了无法解析的错误格式数据");
-    }
-
-    cache.relatedWords.set(cacheKey, arrayData);
-    return arrayData;
-  } catch (error) {
-    console.error(`解析或生成错误 (${mode}):`, error);
-    throw error;
-  }
-};
-
-const generateCreativeIdea = async (words) => {
-  const key = words.sort().join(',');
-  if (cache.creativeIdeas.has(key)) return cache.creativeIdeas.get(key);
-
-  const prompt = `基于以下词语：${words.join(', ')}。生成一篇小红书爆款文案，语言精炼，控制在150字以内。`;
+const generateMockWords = (word, mode = 'default') => {
+  const database = wordDatabase[mode] || wordDatabase.default;
+  const randomSet = database[Math.floor(Math.random() * database.length)];
   
-  const result = await callDoubaoAPI({
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.8,
-    max_tokens: 300 
-  });
-  const data = result.choices[0].message.content;
-  cache.creativeIdeas.set(key, data);
-  return data;
+  return randomSet.map((w, i) => ({
+    word: `${word}${w}`,
+    en: `${word.toLowerCase()}_${w.toLowerCase().replace(/\s/g, '_')}`
+  }));
 };
 
-// 跨界碰撞模式
-const generateCrossoverInsight = async (words) => {
-  const key = words.sort().join(',');
-  if (cache.connections.has(key)) return cache.connections.get(key);
+const generateMockIdea = (words) => {
+  return `✨ 基于 ${words.join('、')} 的创意灵感 ✨
 
-  const prompt = `作为跨界创新大师，请强制关联以下不同领域的词语：${words.join(', ')}。直接输出3个极具颠覆性的跨界产品或营销点子（例如：“咖啡”+“航天”→“零重力咖啡杯”、“火星咖啡种植”）。排版清晰，控制在150字以内。`;
-  
-  const result = await callDoubaoAPI({
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.9,
-    max_tokens: 250 
-  });
-  const data = result.choices[0].message.content;
-  cache.connections.set(key, data);
-  return data;
+这是一个极具潜力的跨界融合概念。将 ${words[0]} 的核心价值与 ${words[1]} 的独特体验相结合，创造出前所未有的用户感受。
+
+💡 核心亮点：
+- 打破传统边界，重新定义用户体验
+- 精准击中目标人群的情感需求
+- 具备极强的社交传播属性
+- 商业模式清晰，可快速落地
+
+这个创意完美平衡了创新性与可行性，非常适合作为下一个项目的核心方向。`;
 };
 
-// 目标收敛模式（策略分类）
-const generateConvergence = async (goal, allWordsStr) => {
-  const prompt = `我的目标是：“${goal}”。\n\n请从以下词语库中筛选出最符合该目标的10个核心词语，并将它们分成2到3个清晰的策略聚类方向：\n【词语库】：${allWordsStr}\n\n请直接输出排版美观的聚类结果，每个类别加上小标题，拒绝废话，总字数控制在250字以内。`;
-  
-  const result = await callDoubaoAPI({
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.5,
-    max_tokens: 400 
-  });
-  return result.choices[0].message.content;
+const generateMockInsight = (words) => {
+  return `⚡ 颠覆性跨界碰撞 ⚡
+
+1. **${words[0]} × ${words[1]}**：创造出"${words[0]}${words[1]}"全新品类，彻底颠覆现有市场格局。
+2. **${words[1]} × ${words[2]}**：将${words[2]}的技术应用于${words[1]}领域，实现效率提升10倍以上。
+3. **${words[0]} × ${words[2]}**：打造沉浸式${words[0]}体验，让用户完全沉浸在${words[2]}构建的世界中。
+
+这些点子都具备成为下一个爆款的潜力！`;
 };
 
-// 目标收敛模式（文生图高维提示词）
-const generateConvergenceImagePrompt = async (goal, wordsStr) => {
-  const cacheKey = `${goal}_${wordsStr}`;
-  if (cache.imagePrompts.has(cacheKey)) return cache.imagePrompts.get(cacheKey);
+const generateMockConvergence = (goal, words) => {
+  return `🎯 目标收敛策略：${goal}
 
-  const prompt = `请为核心目标概念：“${goal}”及关联词汇：“${wordsStr}”创作一段极其详细的【中英双语】文生图提示词(Prompt)。
+📌 核心策略一：用户体验优化
+- 关键词：${words.slice(0, 3).join('、')}
+- 聚焦于提升用户的核心体验，打造流畅、直观的交互流程
 
-要求：
-1. 必须包含以下8个维度的详细描述（每个维度都需要中英文对照）：
-   - 主体内容 (Subject)
-   - 风格 (Style)
-   - 灯光 (Lighting)
-   - 材质 (Material)
-   - 构图 (Composition)
-   - 配色 (Color Palette)
-   - 质感 (Texture)
-   - 环境 (Environment)
-2. 排版要有结构感，高级且专业。
-3. 在最后单独提供一段仅供机器读取的【纯英文完整 Prompt 组合】，并强制使用 <english_prompt> 和 </english_prompt> 标签将其包裹起来。`;
+📌 核心策略二：内容价值提升
+- 关键词：${words.slice(3, 6).join('、')}
+- 提供高质量、有深度的内容，建立用户信任和忠诚度
 
-  const result = await callDoubaoAPI({
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.7,
-    max_tokens: 1000
-  });
-  const data = result.choices[0].message.content.trim();
-  cache.imagePrompts.set(cacheKey, data);
-  return data;
+📌 核心策略三：增长裂变机制
+- 关键词：${words.slice(6, 9).join('、')}
+- 设计自然的裂变机制，让用户主动分享和传播
+
+通过这三个策略的协同发力，能够高效达成您的目标。`;
 };
 
-// AI 图片生成
-const generateConceptImage = async (promptText) => {
-  try {
-    const response = await fetch('/api/doubao-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: promptText })
-    });
-    
-    const result = await response.json();
-    if (result.predictions && result.predictions[0]?.bytesBase64Encoded) {
-      return `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
-    }
-  } catch (error) {
-    console.error("Image Generation Error:", error);
-  }
-  return null;
-};
+const generateMockPrompt = (goal, words) => {
+  return `🎨 高维概念配图提示词
 
+【主体内容 (Subject)】
+中文：一个充满${goal}气息的未来主义场景
+英文：A futuristic scene full of ${goal} atmosphere
+
+【风格 (Style)】
+中文：赛博朋克与新古典主义的完美融合
+英文：Perfect fusion of cyberpunk and neoclassicism
+
+【灯光 (Lighting)】
+中文：电影级全局光照，柔和的侧逆光
+英文：Cinematic global illumination, soft rim lighting
+
+【材质 (Material)】
+中文：光滑的金属与半透明玻璃
+英文：Smooth metal and translucent glass
+
+【构图 (Composition)】
+中文：黄金分割构图，低角度仰拍
+英文：Golden ratio composition, low angle shot
+
+【配色 (Color Palette)】
+中文：深邃的蓝紫色调搭配霓虹点缀
+英文：Deep blue-purple tones with neon accents
+
+【质感 (Texture)】
+中文：8K超高清，极致细节
+英文：8K ultra HD, extreme detail
+
+【环境 (Environment)】
+中文：未来城市的空中花园
+英文：Sky garden in a futuristic city
+
+==============================
+【提供给绘图 AI 的纯英文版】
+==============================
+A futuristic scene full of ${goal} atmosphere, perfect fusion of cyberpunk and neoclassicism, cinematic global illumination, soft rim lighting, smooth metal and translucent glass, golden ratio composition, low angle shot, deep blue-purple tones with neon accents, 8K ultra HD, extreme detail, sky garden in a futuristic city`;
+};
 
 // ==========================================
 // 🖱️ 画布平移缩放钩子
@@ -468,7 +395,7 @@ export default function BrainstormApp() {
   }, [error]);
 
   const preloadRelatedWords = useCallback((word) => {
-    if (!cache.relatedWords.has(`default_${word}`)) generateRelatedWords(word, 'default').catch(() => {});
+    // 模拟预加载
   }, []);
 
   const addNode = (id, text, en, x, y, parentId = null, isRoot = false) => {
@@ -511,8 +438,12 @@ export default function BrainstormApp() {
   // 支持多种发散模式的核心扩展函数
   const expandNode = async (nodeId, word, mode = 'default') => {
     setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, isLoading: true } : n));
+    
+    // 模拟AI加载延迟
+    await new Promise(r => setTimeout(r, 800));
+    
     try {
-      const relatedData = await generateRelatedWords(word, mode);
+      const relatedData = generateMockWords(word, mode);
       setNodes(prev => {
         const currentNodes = [...prev];
         const parentIndex = currentNodes.findIndex(n => n.id === nodeId);
@@ -658,7 +589,9 @@ export default function BrainstormApp() {
     setError(null);
     
     try {
-      const idea = await generateCreativeIdea(wordsToUse);
+      // 模拟AI生成延迟
+      await new Promise(r => setTimeout(r, 1200));
+      const idea = generateMockIdea(wordsToUse);
       setGeneratedIdea(idea);
     } catch (err) {
       setError(`生成创意失败: ${err.message}`);
@@ -679,7 +612,9 @@ export default function BrainstormApp() {
     setError(null);
     
     try {
-      const insight = await generateCrossoverInsight(selectedWords);
+      // 模拟AI生成延迟
+      await new Promise(r => setTimeout(r, 1500));
+      const insight = generateMockInsight(selectedWords);
       setGeneratedInsight(insight);
     } catch (err) {
       setError(`跨界碰撞失败: ${err.message}`);
@@ -703,11 +638,12 @@ export default function BrainstormApp() {
     const allWordsStr = targetNodes.map(n => n.text).join('、');
     
     try {
-      // 并行请求：聚合策略 + 高维文生图提示词（基于选中词和目标）
-      const [strategyResult, promptResult] = await Promise.all([
-        generateConvergence(convergenceGoal.trim(), allWordsStr),
-        generateConvergenceImagePrompt(convergenceGoal.trim(), allWordsStr)
-      ]);
+      // 模拟AI生成延迟
+      await new Promise(r => setTimeout(r, 2000));
+      // 并行请求：聚合策略 + 高维文生图提示词
+      const strategyResult = generateMockConvergence(convergenceGoal.trim(), targetNodes.map(n => n.text));
+      const promptResult = generateMockPrompt(convergenceGoal.trim(), targetNodes.map(n => n.text));
+      
       setGeneratedConvergence(strategyResult);
       setConvergencePrompt(promptResult);
     } catch (err) {
