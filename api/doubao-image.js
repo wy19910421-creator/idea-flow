@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     const apiKey = process.env.DOUBAO_API_KEY;
     
     if (!apiKey) {
-      return res.status(500).json({ error: 'API Key not configured' });
+      return res.status(500).json({ error: 'API Key 未配置' });
     }
 
     const response = await fetch(
@@ -38,7 +38,7 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      return res.status(response.status).json({ error: `Doubao Image API Error: ${errorText}` });
+      return res.status(response.status).json({ error: `图片生成错误: ${errorText}` });
     }
 
     const data = await response.json();
@@ -47,6 +47,6 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Server Error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: '服务器错误', message: error.message });
   }
 }
