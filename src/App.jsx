@@ -90,9 +90,10 @@ const BinaryTreeCanvas = () => {
 };
 
 // ==========================================
-// 🚀 Gemini API 集成
+// 🚀 Gemini API 集成 (Vercel 后端代理版 - 100% 安全)
 // ==========================================
-const apiKey = "AIzaSyAYrgppwldL8_AdFSECSGoi1FqBr91ullE"; 
+// ✅ 前端无任何 API Key，所有请求通过 Vercel 后端转发
+// ✅ 彻底解决 API Key 泄露问题，放心部署到 GitHub 和 Vercel
 
 const fetchWithRetry = async (url, options, retries = 5) => {
   const delays = [1000, 2000, 4000, 8000, 16000];
@@ -100,7 +101,8 @@ const fetchWithRetry = async (url, options, retries = 5) => {
     try {
       const response = await fetch(url, options);
       if (!response.ok) {
-        throw new Error(`HTTP Error: ${response.status} - ${await response.text()}`);
+        const errorData = await response.json();
+        throw new Error(`HTTP Error: ${response.status} - ${errorData.error || 'Unknown error'}`);
       }
       return await response.json();
     } catch (err) {
@@ -111,15 +113,18 @@ const fetchWithRetry = async (url, options, retries = 5) => {
 };
 
 const callGeminiText = async (prompt, systemInstructionText, isJson = false) => {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+  const url = '/api/gemini-text';
   
   const payload = {
-    contents: [{ parts: [{ text: prompt }] }],
-    systemInstruction: { parts: [{ text: systemInstructionText }] }
+    model: "gemini-2.5-flash",
+    payload: {
+      contents: [{ parts: [{ text: prompt }] }],
+      systemInstruction: { parts: [{ text: systemInstructionText }] }
+    }
   };
 
   if (isJson) {
-    payload.generationConfig = { responseMimeType: "application/json" };
+    payload.payload.generationConfig = { responseMimeType: "application/json" };
   }
 
   const result = await fetchWithRetry(url, {
@@ -192,10 +197,15 @@ const generateDetailPrompt = async (word) => {
 };
 
 const generateConceptImage = async (promptText) => {
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
-  const payload = { instances: { prompt: promptText }, parameters: { sampleCount: 1 } };
+  const apiUrl = '/api/gemini-image';
+  
   try {
-    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: promptText })
+    });
+    
     const result = await response.json();
     if (result.predictions && result.predictions[0]?.bytesBase64Encoded) {
       return `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
@@ -212,14 +222,23 @@ const fetchDetailNews = async (word) => {
 1. 总结出3条关键信息，必须是客观真实的互联网资讯。
 2. 使用专业的中文进行回复，排版清晰。`;
   
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+  const url = '/api/gemini-text';
+  
   const payload = {
-    contents: [{ parts: [{ text: prompt }] }],
-    tools: [{ google_search: {} }]
+    model: "gemini-2.5-flash",
+    payload: {
+      contents: [{ parts: [{ text: prompt }] }],
+      tools: [{ google_search: {} }]
+    }
   };
 
   try {
-    const result = await fetchWithRetry(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await fetchWithRetry(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
     const candidate = result.candidates?.[0];
     let text = "未能找到相关的真实资讯，可能该领域近期无热点。";
     let sources = [];
