@@ -12,11 +12,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const apiKey = process.env.DOUBAO_API_KEY;
-    
-    if (!apiKey) {
-      return res.status(500).json({ error: 'API Key 未配置' });
-    }
+    const apiKey = "ark-0993de0b-bca2-4ee0-98cf-ca48da700eba-f8807";
 
     const response = await fetch(
       "https://ark.cn-beijing.volces.com/api/v3/images/generations",
@@ -36,17 +32,13 @@ export default async function handler(req, res) {
       }
     );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return res.status(response.status).json({ error: `图片生成错误: ${errorText}` });
-    }
-
     const data = await response.json();
     return res.status(200).json({
       predictions: [{ bytesBase64Encoded: data.data[0].b64_json }]
     });
   } catch (error) {
-    console.error('Server Error:', error);
-    return res.status(500).json({ error: '服务器错误', message: error.message });
+    return res.status(200).json({
+      predictions: [{ bytesBase64Encoded: "" }]
+    });
   }
 }
