@@ -13,35 +13,39 @@ export default async function handler(req, res) {
 
   try {
     const { prompt } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.DOUBAO_API_KEY;
     
     if (!apiKey) {
       return res.status(500).json({ error: 'API Key not configured' });
     }
 
-    // ✅ 新增：强制使用美国地区的Google API节点，绕过地区限制
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`,
+      "https://ark.cn-beijing.volces.com/api/v3/images/generations",
       {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          instances: { prompt },
-          parameters: { sampleCount: 1 }
+          model: "doubao-image-v1",
+          prompt: prompt,
+          n: 1,
+          size: "1024x1024",
+          response_format: "b64_json"
         })
       }
     );
 
     if (!response.ok) {
       const errorText = await response.text();
-      return res.status(response.status).json({ error: `Google API Error: ${errorText}` });
+      return res.status(response.status).json({ error: `Doubao Image API Error: ${errorText}` });
     }
 
     const data = await response.json();
-    return res.status(200).json(data);
+    return res.status(200).json({
+      predictions: [{ bytesBase64Encoded: data.data[0].b64_json }]
+    });
   } catch (error) {
     console.error('Server Error:', error);
     return res.status(500).json({ error: 'Internal server error' });

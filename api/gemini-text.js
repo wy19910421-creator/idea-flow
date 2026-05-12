@@ -12,22 +12,37 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { model, payload } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY;
+    const { prompt, systemInstruction, isJson, enableSearch } = req.body;
+    const apiKey = process.env.DOUBAO_API_KEY;
     
     if (!apiKey) {
       return res.status(500).json({ error: 'API Key not configured' });
     }
 
-    // ✅ 新增：强制使用美国地区的Google API节点，绕过地区限制
+    const payload = {
+      model: "doubao-1.5-pro-250324",
+      messages: [
+        { role: "system", content: systemInstruction },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.7
+    };
+
+    if (isJson) {
+      payload.response_format = { type: "json_object" };
+    }
+
+    if (enableSearch) {
+      payload.tools = [{ type: "web_search" }];
+    }
+
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
       {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          // 模拟美国浏览器请求
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify(payload)
       }
@@ -35,7 +50,7 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      return res.status(response.status).json({ error: `Google API Error: ${errorText}` });
+      return res.status(response.status).json({ error: `Doubao API Error: ${errorText}` });
     }
 
     const data = await response.json();
